@@ -1,0 +1,127 @@
+import React from 'react';
+
+const TeamSearchAggregation = ({
+  teamType,
+  searchTerm,
+  setSearchTerm,
+  aggregatedItems,
+  setCurrentPage,
+  onAddStock // New prop for add stock functionality
+}) => {
+  const searchResults = searchTerm.trim()
+    ? Object.entries(aggregatedItems).filter(([key, item]) => {
+      const searchLower = searchTerm.toLowerCase();
+      const nameKey = `${teamType}_name`;
+
+      if (item[nameKey]?.toLowerCase().includes(searchLower)) return true;
+
+      return item.orders.some(order =>
+        order.customer_name?.toLowerCase().includes(searchLower) ||
+        order.manager_name?.toLowerCase().includes(searchLower) ||
+        order.order_number?.toLowerCase().includes(searchLower)
+      );
+    })
+    : [];
+
+  return (
+    <div className="mb-6 space-y-3">
+      {/* Search input and Add Stock button row */}
+      <div className="flex items-center gap-3">
+        {/* Search input container - 70% width */}
+        <div className="relative w-[90%]">
+          <input
+            type="text"
+            value={searchTerm}
+            onChange={(e) => {
+              setSearchTerm(e.target.value);
+              setCurrentPage(1);
+            }}
+            placeholder={`Search by ${teamType} name, order number, customer or manager`}
+            className="w-full px-3 py-2 pl-10 pr-12 border border-orange-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 text-red-800 placeholder-red-800 text-sm"
+          />
+
+          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+            <svg className="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+          </div>
+
+          {searchTerm && (
+            <button
+              onClick={() => {
+                setSearchTerm('');
+                setCurrentPage(1);
+              }}
+              className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
+              title="Clear search"
+            >
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          )}
+        </div>
+
+        <div className="w-[10%]">
+          <button
+            onClick={onAddStock}
+            className="w-full px-4 py-2 bg-orange-800 text-white text-sm font-medium rounded-md hover:bg-orange-600 focus:outline-none transition-colors duration-200"
+          >
+            Add Stock
+          </button>
+        </div>
+      </div>
+
+      {/* Search results section - unchanged */}
+      {searchTerm.trim() && searchResults.length > 0 && (
+        <div className="bg-[#FFF0E7] rounded-lg p-4">
+          <h4 className="text-sm font-semibold text-orange-800 mb-3">
+            Search Results for "{searchTerm}"
+          </h4>
+          <div className="space-y-3">
+            {searchResults.map(([key, item]) => (
+              <div key={key} className="bg-white rounded-lg p-4 shadow-sm">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                  <div>
+                    <span className="text-gray-500">Total Order Quantity :</span>
+                    <p className="font-semibold text-orange-900">{item.total_quantity}</p>
+                  </div>
+                  <div>
+                    <span className="text-gray-500">Total Remaining :</span>
+                    <p className="font-semibold text-red-600">{item.total_remaining}</p>
+                  </div>
+                  <div>
+                    <span className="text-gray-500">Available Stock :</span>
+                    <p className="font-semibold text-green-600">{item.available_stock}</p>
+                  </div>
+                  <div>
+                    <span className="text-gray-500">Orders Count :</span>
+                    <p className="font-semibold text-blue-600">{item.orders.length}</p>
+                  </div>
+                </div>
+
+                <div className="mt-3 p-3 bg-gray-50 rounded-md">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-gray-600">Stock vs Demand :</span>
+                    <span
+                      className={`font-semibold ${item.available_stock >= item.total_remaining
+                        ? 'text-green-600'
+                        : 'text-red-600'
+                        }`}
+                    >
+                      {item.available_stock >= item.total_remaining
+                        ? `✓ Sufficient (${item.available_stock - item.total_remaining} extra)`
+                        : `⚠ Short by ${item.total_remaining - item.available_stock}`}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default TeamSearchAggregation;

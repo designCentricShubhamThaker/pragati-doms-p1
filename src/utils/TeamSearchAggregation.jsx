@@ -6,28 +6,56 @@ const TeamSearchAggregation = ({
   setSearchTerm,
   aggregatedItems,
   setCurrentPage,
-  onAddStock // New prop for add stock functionality
+  onAddStock
 }) => {
+
+  const glassMasterData = React.useMemo(() => {
+    try {
+      return JSON.parse(localStorage.getItem("glassMaster")) || [];
+    } catch {
+      return [];
+    }
+  }, []);
+
   const searchResults = searchTerm.trim()
-    ? Object.entries(aggregatedItems).filter(([key, item]) => {
-      const searchLower = searchTerm.toLowerCase();
-      const nameKey = `${teamType}_name`;
+    ? Object.entries(aggregatedItems)
+      .map(([key, item]) => {
+        const nameKey = `${teamType}_name`;
 
-      if (item[nameKey]?.toLowerCase().includes(searchLower)) return true;
+        const matchedGlass = glassMasterData.find(g =>
+          g.glass_name?.toLowerCase() === item[nameKey]?.toLowerCase() &&
+          Number(g.capacity) === Number(item.capacity) &&
+          Number(g.weight) === Number(item.weight) &&
+          Number(g.neck_diameter) === Number(item.neck_diameter)
+        );
 
-      return item.orders.some(order =>
-        order.customer_name?.toLowerCase().includes(searchLower) ||
-        order.manager_name?.toLowerCase().includes(searchLower) ||
-        order.order_number?.toLowerCase().includes(searchLower)
-      );
-    })
+        const availableStock = matchedGlass?.available_stock ?? 0;
+
+        return [
+          key,
+          {
+            ...item,
+            available_stock: availableStock
+          }
+        ];
+      })
+      .filter(([key, item]) => {
+        const searchLower = searchTerm.toLowerCase();
+        const nameKey = `${teamType}_name`;
+
+        if (item[nameKey]?.toLowerCase().includes(searchLower)) return true;
+
+        return item.orders.some(order =>
+          order.customer_name?.toLowerCase().includes(searchLower) ||
+          order.manager_name?.toLowerCase().includes(searchLower) ||
+          order.order_number?.toLowerCase().includes(searchLower)
+        );
+      })
     : [];
 
   return (
     <div className="mb-6 space-y-3">
-      {/* Search input and Add Stock button row */}
       <div className="flex items-center gap-3">
-        {/* Search input container - 70% width */}
         <div className="relative w-[90%]">
           <input
             type="text"
@@ -64,7 +92,20 @@ const TeamSearchAggregation = ({
 
         <div className="w-[10%]">
           <button
-            onClick={onAddStock}
+            onClick={() => {
+              // Find the first exact match from searchResults
+              if (searchResults.length > 0) {
+                const [_, firstItem] = searchResults[0]; // firstItem contains capacity, weight, etc.
+                const nameKey = `${teamType}_name`;
+
+                onAddStock({
+                  name: firstItem[nameKey],
+                  capacity: firstItem.capacity,
+                  weight: firstItem.weight,
+                  neck_diameter: firstItem.neck_diameter
+                });
+              }
+            }}
             className="w-full px-4 py-2 bg-orange-800 text-white text-sm font-medium rounded-md hover:bg-orange-600 focus:outline-none transition-colors duration-200"
           >
             Add Stock
@@ -72,7 +113,6 @@ const TeamSearchAggregation = ({
         </div>
       </div>
 
-      {/* Search results section - unchanged */}
       {searchTerm.trim() && searchResults.length > 0 && (
         <div className="bg-[#FFF0E7] rounded-lg p-4">
           <h4 className="text-sm font-semibold text-orange-800 mb-3">
@@ -123,5 +163,7 @@ const TeamSearchAggregation = ({
     </div>
   );
 };
+
+
 
 export default TeamSearchAggregation;

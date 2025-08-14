@@ -16,9 +16,20 @@ const StockAvailabilityDialog = ({
 }) => {
   if (!showStockDialog || !selectedItem) return null;
 
-  const glassComponents = getGlassComponents(selectedItem);
-  const completedComponents = glassComponents.filter(component => component.status === 'COMPLETED');
-  const pendingComponents = glassComponents.filter(component => component.status !== 'COMPLETED');
+  // Filter glass components specifically
+  const glassComponents = selectedItem?.components?.filter(component => 
+    component.component_type === "glass"
+  ) || [];
+  
+  const completedComponents = glassComponents.filter(component => {
+    const remaining = getRemainingQty(component);
+    return remaining === 0;
+  });
+  
+  const pendingComponents = glassComponents.filter(component => {
+    const remaining = getRemainingQty(component);
+    return remaining > 0;
+  });
   
   const hasStockQuantities = Object.values(stockQuantities).some(qty =>
     qty !== '' && parseInt(qty) > 0
@@ -38,12 +49,12 @@ const StockAvailabilityDialog = ({
 
     return (
       <div 
-        key={component.data_code} 
+        key={component.component_id} 
         className={`${bgColor} rounded-lg p-3 sm:p-5 relative ${isCompleted ? 'opacity-90' : ''}`}
       >
         {isCompleted && (
           <div className="absolute top-2 right-2 sm:top-3 sm:right-3">
-            <div className="flex items-center gap-1 bg-orange-600 text-white px-2 py-1 rounded-full text-xs font-medium">
+            <div className="flex items-center gap-1 bg-green-600 text-white px-2 py-1 rounded-full text-xs font-medium">
               <CheckCircle size={12} />
               <span className="hidden sm:inline">Completed</span>
               <span className="sm:hidden">✓</span>
@@ -54,7 +65,7 @@ const StockAvailabilityDialog = ({
         <div className="hidden md:block">
           <div className="flex items-center justify-between mb-4">
             <div className="flex-1 pr-20"> 
-              <h4 className={`font-medium text-base ${isCompleted ? 'text-orange-800' : 'text-orange-900'}`}>
+              <h4 className={`font-medium text-base ${isCompleted ? 'text-green-800' : 'text-orange-900'}`}>
                 {component.name}
               </h4>
               <p className="text-sm text-gray-600 mt-1">
@@ -64,7 +75,7 @@ const StockAvailabilityDialog = ({
                 </span>
               </p>
               {isCompleted && (
-                <p className="text-sm text-red-900 mt-1 font-medium">
+                <p className="text-sm text-green-900 mt-1 font-medium">
                   ✅ All {component.qty} components completed
                 </p>
               )}
@@ -79,7 +90,7 @@ const StockAvailabilityDialog = ({
                     Max Use: {maxStock}
                   </p>
                   <button
-                    onClick={() => handleStockQuantityChange(component.data_code, maxStock.toString())}
+                    onClick={() => handleStockQuantityChange(component.component_id, maxStock.toString())}
                     className="mt-1 text-xs text-orange-600 hover:text-orange-800 underline"
                     disabled={maxStock === 0}
                   >
@@ -95,7 +106,7 @@ const StockAvailabilityDialog = ({
               Stock Qty to Use:
             </label>
             {isCompleted ? (
-              <div className="flex-1 px-3 py-2 bg-orange-50 border border-orange-300 rounded-md text-gray-800 font-medium">
+              <div className="flex-1 px-3 py-2 bg-green-50 border border-green-300 rounded-md text-gray-800 font-medium">
                 No stock needed - Already completed
               </div>
             ) : (
@@ -103,22 +114,22 @@ const StockAvailabilityDialog = ({
                 type="number"
                 min="0"
                 max={maxStock}
-                value={stockQuantities[component.data_code] || ''}
-                onChange={(e) => handleStockQuantityChange(component.data_code, e.target.value)}
+                value={stockQuantities[component.component_id] || ''}
+                onChange={(e) => handleStockQuantityChange(component.component_id, e.target.value)}
                 className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
                 placeholder={maxStock > 0 ? `Max: ${maxStock}` : 'No stock available'}
                 disabled={maxStock === 0}
                 onBlur={(e) => {
                   const val = parseInt(e.target.value);
                   if (val > maxStock) {
-                    handleStockQuantityChange(component.data_code, maxStock.toString());
+                    handleStockQuantityChange(component.component_id, maxStock.toString());
                   }
                 }}
               />
             )}
-            {!isCompleted && stockQuantities[component.data_code] && parseInt(stockQuantities[component.data_code]) > 0 && (
+            {!isCompleted && stockQuantities[component.component_id] && parseInt(stockQuantities[component.component_id]) > 0 && (
               <span className="text-sm text-green-900 font-medium whitespace-nowrap">
-                ✓ {stockQuantities[component.data_code]} selected
+                ✓ {stockQuantities[component.component_id]} selected
               </span>
             )}
           </div>
@@ -153,7 +164,7 @@ const StockAvailabilityDialog = ({
                 <div className="flex items-center justify-between">
                   <label className="text-xs text-gray-700 font-medium">Stock Qty to Use:</label>
                   <button
-                    onClick={() => handleStockQuantityChange(component.data_code, maxStock.toString())}
+                    onClick={() => handleStockQuantityChange(component.component_id, maxStock.toString())}
                     className="text-xs text-orange-600 hover:text-orange-800 underline"
                     disabled={maxStock === 0}
                   >
@@ -165,22 +176,22 @@ const StockAvailabilityDialog = ({
                   type="number"
                   min="0"
                   max={maxStock}
-                  value={stockQuantities[component.data_code] || ''}
-                  onChange={(e) => handleStockQuantityChange(component.data_code, e.target.value)}
+                  value={stockQuantities[component.component_id] || ''}
+                  onChange={(e) => handleStockQuantityChange(component.component_id, e.target.value)}
                   className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
                   placeholder={maxStock > 0 ? `Max: ${maxStock}` : 'No stock available'}
                   disabled={maxStock === 0}
                   onBlur={(e) => {
                     const val = parseInt(e.target.value);
                     if (val > maxStock) {
-                      handleStockQuantityChange(component.data_code, maxStock.toString());
+                      handleStockQuantityChange(component.component_id, maxStock.toString());
                     }
                   }}
                 />
                 
-                {stockQuantities[component.data_code] && parseInt(stockQuantities[component.data_code]) > 0 && (
+                {stockQuantities[component.component_id] && parseInt(stockQuantities[component.component_id]) > 0 && (
                   <div className="text-xs text-green-900 font-medium text-center bg-green-50 py-1 rounded">
-                    ✓ {stockQuantities[component.data_code]} selected
+                    ✓ {stockQuantities[component.component_id]} selected
                   </div>
                 )}
               </>
@@ -195,13 +206,13 @@ const StockAvailabilityDialog = ({
     <div className="fixed inset-0 bg-gray-500/75 flex items-center justify-center p-2 sm:p-4 z-50">
       <div className="bg-white rounded-lg shadow-xl w-full max-w-sm sm:max-w-2xl lg:max-w-5xl max-h-[115vh] sm:max-h-[90vh] overflow-hidden">
         <div className="bg-orange-600 text-white px-3 sm:px-6 py-3 sm:py-4">
-          <h3 className="text-base sm:text-lg font-semibold">Stock Availability Check</h3>
+          <h3 className="text-base sm:text-lg font-semibold">Glass Stock Availability Check</h3>
           <p className="text-orange-100 text-xs sm:text-sm mt-1">
             Order #{selectedOrder?.order_number} - {selectedItem?.item_name}
           </p>
           <div className="flex items-center gap-4 mt-2 text-xs sm:text-sm">
             <p className="text-orange-200 flex-1">
-              Select quantities from your existing inventory to fulfill this order
+              Select glass component quantities from your existing inventory to fulfill this order
             </p>
           </div>
         </div>
@@ -213,7 +224,7 @@ const StockAvailabilityDialog = ({
               <div className="flex items-center gap-3 py-2">
                 <hr className="flex-1 border-gray-300" />
                 <span className="text-sm text-gray-500 bg-gray-100 px-3 py-1 rounded-full">
-                  Completed Items
+                  Completed Glass Components
                 </span>
                 <hr className="flex-1 border-gray-300" />
               </div>
@@ -236,7 +247,7 @@ const StockAvailabilityDialog = ({
                   onClick={handleStockNo}
                   className="w-full sm:w-auto px-3 sm:px-4 py-2 text-sm text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
                 >
-                  No Stock Available
+                  No Glass Stock Available
                 </button>
                 <button
                   onClick={() => {
@@ -246,16 +257,16 @@ const StockAvailabilityDialog = ({
                       // Since we don't have available_stock in new API, using 0 for now
                       const maxStock = Math.min(remaining, 0);
                       if (maxStock > 0) {
-                        allMaxStock[component.data_code] = maxStock.toString();
+                        allMaxStock[component.component_id] = maxStock.toString();
                       }
                     });
                     setStockQuantities(allMaxStock);
                     handleStockYes();
                   }}
-                  className="w-full sm:w-auto px-3 sm:px-4 py-2 text-sm text-white bg-green-900 rounded-md hover:bg-green-700"
+                  className="w-full sm:w-auto px-3 sm:px-4 py-2 text-sm text-white bg-green-600 rounded-md hover:bg-green-700"
                 >
-                  <span className="hidden sm:inline">Use All Available Stock</span>
-                  <span className="sm:hidden">Use All Stock</span>
+                  <span className="hidden sm:inline">Use All Available Glass Stock</span>
+                  <span className="sm:hidden">Use All Glass Stock</span>
                 </button>
                 <button
                   onClick={handleStockYes}
@@ -263,7 +274,7 @@ const StockAvailabilityDialog = ({
                   className="w-full sm:w-auto px-3 sm:px-4 py-2 text-sm text-white bg-orange-600 rounded-md hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <span className="hidden sm:inline">
-                    Use Selected Stock ({Object.values(stockQuantities).filter(qty => qty !== '' && parseInt(qty) > 0).length} items)
+                    Use Selected Glass Stock ({Object.values(stockQuantities).filter(qty => qty !== '' && parseInt(qty) > 0).length} items)
                   </span>
                   <span className="sm:hidden">
                     Use Selected ({Object.values(stockQuantities).filter(qty => qty !== '' && parseInt(qty) > 0).length})
@@ -275,9 +286,9 @@ const StockAvailabilityDialog = ({
             {pendingComponents.length === 0 && completedComponents.length > 0 && (
               <button
                 onClick={handleStockDialogClose}
-                className="cursor-pointer bg-orange-700 text-white flex items-center gap-2 px-3 py-1.5 rounded-sm shadow-md transition-colors duration-200 font-medium hover:bg-red-900 hover:text-white"
+                className="cursor-pointer bg-green-600 text-white flex items-center gap-2 px-3 py-1.5 rounded-sm shadow-md transition-colors duration-200 font-medium hover:bg-green-700 hover:text-white"
               >
-                All Items Completed - Close
+                All Glass Components Completed - Close
               </button>
             )}
           </div>

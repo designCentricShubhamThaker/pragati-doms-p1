@@ -2,14 +2,67 @@ import React, { useState, useEffect } from 'react';
 import { Menu, ChevronLeft } from 'lucide-react';
 import { FaPowerOff } from "react-icons/fa";
 import SharedHeader from '../../components/SharedHeader.jsx';
-import BottleOrders from './BottleOrders.jsx';
+
 import { useCurrentDateTime } from '../../hooks/useCurrentDateTime.jsx';
 import BottleMaster from './BottleMaster.jsx';
+import GlassOrders from './GlassOrders.jsx';
 
-const BottleDashboard = ({ isEmbedded = false }) => {
+const GlassDashboard = ({ isEmbedded = false }) => {
   const [activeMenuItem, setActiveMenuItem] = useState('liveOrders');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { currentDateTime, formatTime, formatTimeMobile } = useCurrentDateTime();
+  const [allProducts, setAllProducts] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+   const [filterLoading, setFilterLoading] = useState(false);
+
+  const fetchAllProducts = async () => {
+    try {
+      setFilterLoading(true);
+      const response = await fetch("https://doms-k1fi.onrender.com/api/masters/glass/all");
+      const result = await response.json();
+
+      if (result.success) {
+        setAllProducts(result.data);
+        console.log('data loaded')
+        localStorage.setItem("glassMaster", JSON.stringify(result.data));
+      } else {
+        setError("Failed to fetch all products data");
+      }
+    } catch (err) {
+      setError("Error connecting to API for all products");
+      console.error("API Error (all products):", err);
+    } finally {
+      setFilterLoading(false);
+    }
+  };
+
+
+
+  useEffect(() => {
+    const initializeData = async () => {
+      try {
+        setLoading(true);
+        const cachedData = localStorage.getItem("glassMaster");
+        if (cachedData) {
+          try {
+            setAllProducts(JSON.parse(cachedData));
+          } catch {
+            console.error("Error parsing cached glassMaster, fetching fresh data...");
+            await fetchAllProducts();
+          }
+        } else {
+          await fetchAllProducts();
+        }
+      } catch (err) {
+        setError("Failed to initialize data");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    initializeData();
+  }, []);
 
   const handleLogout = () => {
     console.log('Logout clicked');
@@ -30,11 +83,12 @@ const BottleDashboard = ({ isEmbedded = false }) => {
   const renderActiveComponent = () => {
     switch (activeMenuItem) {
       case 'liveOrders':
-        return <BottleOrders orderType="pending" />;
+        return <GlassOrders orderType='in_progress' />;
       case 'ReadyToDispatch':
-        return <BottleOrders orderType="completed" />;
+        return <GlassOrders orderType='ready_to_dispatch' />;
       case 'BottleMaster':
-        return <BottleMaster />;
+        return <BottleMaster allProducts={allProducts} setAllProducts={setAllProducts} loading={loading}
+          error={error} setFilterLoading={setFilterLoading} filterLoading={filterLoading} />;
       default:
         return (
           <div className="p-4">
@@ -136,4 +190,4 @@ const BottleDashboard = ({ isEmbedded = false }) => {
   );
 };
 
-export default BottleDashboard;
+export default GlassDashboard;

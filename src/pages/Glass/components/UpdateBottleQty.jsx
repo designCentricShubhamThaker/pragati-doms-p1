@@ -10,15 +10,20 @@ const UpdateBottleQty = ({ isOpen, onClose, orderData, itemData, stockQuantities
   const [successMessage, setSuccessMessage] = useState('');
 
   useEffect(() => {
-    if (isOpen && itemData?.bottle) {
-      setAssignments(itemData.bottle.map(bottle => {
-        const stockQty = parseInt(stockQuantities[bottle.deco_no]) || 0;
-        return {
-          ...bottle,
-          todayQty: stockQty,
-          notes: stockQty > 0 ? 'Used from existing stock' : ''
-        };
-      }));
+    if (isOpen && itemData?.components) {
+      // Filter for bottle components similar to pump filtering
+      const bottleAssignments = itemData.components
+        .filter(component => component.component_type === "glass")
+        .map(bottle => {
+          const stockQty = parseInt(stockQuantities[bottle.component_id]) || 0;
+          return {
+            ...bottle,
+            todayQty: stockQty,
+            notes: stockQty > 0 ? 'Used from existing stock' : ''
+          };
+        });
+
+      setAssignments(bottleAssignments);
       setError(null);
       setSuccessMessage('');
     }
@@ -26,7 +31,7 @@ const UpdateBottleQty = ({ isOpen, onClose, orderData, itemData, stockQuantities
 
   const handleQuantityChange = (assignmentIndex, value) => {
     const newAssignments = [...assignments];
-    const stockUsed = parseInt(stockQuantities[newAssignments[assignmentIndex].deco_no]) || 0;
+    const stockUsed = parseInt(stockQuantities[newAssignments[assignmentIndex].component_id]) || 0;
     if (value === '') {
       newAssignments[assignmentIndex].todayQty = stockUsed;
     } else {
@@ -44,14 +49,14 @@ const UpdateBottleQty = ({ isOpen, onClose, orderData, itemData, stockQuantities
 
   const calculateProgress = (bottle) => {
     const completed = bottle.completed_qty || 0;
-    const total = bottle.quantity || 0;
+    const total = bottle.qty || 0; 
     return total > 0 ? Math.min((completed / total) * 100, 100) : 0;
   };
 
   const calculateNewProgress = (bottle, todayQty) => {
     const currentCompleted = bottle.completed_qty || 0;
     const newCompleted = currentCompleted + (todayQty || 0);
-    const total = bottle.quantity || 0;
+    const total = bottle.qty || 0; // Changed from quantity to qty
     return total > 0 ? Math.min((newCompleted / total) * 100, 100) : 0;
   };
 
@@ -85,7 +90,7 @@ const UpdateBottleQty = ({ isOpen, onClose, orderData, itemData, stockQuantities
 
   const getRemainingQty = (bottle) => {
     const completed = bottle.completed_qty || 0;
-    const total = bottle.quantity || 0;
+    const total = bottle.qty || 0; // Changed from quantity to qty
     return Math.max(total - completed, 0);
   };
 
@@ -98,17 +103,17 @@ const UpdateBottleQty = ({ isOpen, onClose, orderData, itemData, stockQuantities
         .filter(assignment => assignment.todayQty > 0)
         .map(assignment => {
           const currentCompleted = assignment.completed_qty || 0;
-          const stockUsed = stockQuantities[assignment.deco_no] || 0;
+          const stockUsed = stockQuantities[assignment.component_id] || 0;
           const newProduction = Math.max(0, assignment.todayQty - stockUsed);
           const newCompleted = currentCompleted + assignment.todayQty;
 
           return {
-            deco_no: assignment.deco_no,
+            component_id: assignment.component_id, // Added component_id like deco_no in original
             quantity_produced: newProduction,
             stock_used: stockUsed,
             total_completed: newCompleted,
             new_inventory_used: (assignment.inventory_used || 0) + stockUsed,
-            newStatus: newCompleted >= assignment.quantity ? 'Completed' : 'In Progress',
+            newStatus: newCompleted >= assignment.qty ? 'Completed' : 'In Progress', // Changed quantity to qty
             notes: assignment.notes || '',
             date: new Date().toISOString()
           };
@@ -125,17 +130,33 @@ const UpdateBottleQty = ({ isOpen, onClose, orderData, itemData, stockQuantities
         const remaining = getRemainingQty(assignment);
 
         if (assignment.todayQty > remaining) {
-          setError(`Quantity for ${assignment.bottle_name} exceeds remaining amount (${remaining})`);
+          setError(`Quantity for ${assignment.name} exceeds remaining amount (${remaining})`); // Changed bottle_name to name
           setLoading(false);
           return;
         }
       }
 
-      const response = await axios.patch('https://pragati-dummy-server.onrender.com/api/bottles/update-progress', {
-        orderNumber: orderData.order_number,
-        itemId: itemData._id,
-        updates
-      });
+      // Using fetch like in pump component instead of axios
+      const result = await fetch(
+        "https://pragati-dummy-server.onrender.com/api/bottles/update-progress",
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            orderNumber: orderData.order_number,
+            itemId: itemData._id,
+            updates,
+          }),
+        }
+      );
+
+      if (!result.ok) {
+        throw new Error(`HTTP error! status: ${result.status}`);
+      }
+
+      const response = await result.json();
 
       if (response.data.success) {
         const updatedOrder = response.data.data.order;
@@ -223,12 +244,12 @@ const UpdateBottleQty = ({ isOpen, onClose, orderData, itemData, stockQuantities
               {assignments.map((assignment, index) => {
                 const remaining = getRemainingQty(assignment);
                 const isCompleted = remaining === 0;
-                const stockUsed = stockQuantities[assignment.deco_no] || 0;
+                const stockUsed = stockQuantities[assignment.component_id] || 0;
                 const colorClasses = ['bg-orange-50', 'bg-orange-100', 'bg-yellow-50', 'bg-yellow-100'];
                 const bgColor = colorClasses[index % colorClasses.length];
 
                 return (
-                  <div key={assignment.deco_no} className="mb-4 last:mb-0">
+                  <div key={assignment.component_id} className="mb-4 last:mb-0">
                     <div className={`hidden lg:block border-b border-orange-100 px-6 py-4 ${bgColor} -mx-6`}>
                       <div className="grid gap-4 text-sm items-center"
                         style={{
@@ -236,22 +257,22 @@ const UpdateBottleQty = ({ isOpen, onClose, orderData, itemData, stockQuantities
                         }}>
 
                         <div className="text-left">
-                          <div className="font-medium text-orange-900">{assignment.bottle_name}</div>
+                          <div className="font-medium text-orange-900">{assignment.name}</div>
                           <div className="text-xs text-gray-600">
-                            Deco #{assignment.deco_no}
+                            ID: {assignment.component_id}
                           </div>
                         </div>
 
                         <div className="text-center text-orange-900">
-                          {assignment.neck_size}mm
+                          {assignment.neck_size || 'N/A'}mm
                         </div>
 
                         <div className="text-center text-orange-900">
-                          {assignment.capacity}
+                          {assignment.capacity || 'N/A'}
                         </div>
 
                         <div className="text-center text-orange-900 font-medium">
-                          {assignment.quantity}
+                          {assignment.qty}
                         </div>
 
                         <div className="text-center">
@@ -271,7 +292,7 @@ const UpdateBottleQty = ({ isOpen, onClose, orderData, itemData, stockQuantities
                             todayQty={assignment.todayQty || 0}
                           />
                           <div className="text-xs text-gray-500 mt-1 text-center">
-                            {assignment.completed_qty || 0} / {assignment.quantity}
+                            {assignment.completed_qty || 0} / {assignment.qty}
                           </div>
                         </div>
 
@@ -313,21 +334,21 @@ const UpdateBottleQty = ({ isOpen, onClose, orderData, itemData, stockQuantities
                     <div className={`lg:hidden ${bgColor} rounded-lg p-3 sm:p-4`}>
                       <div className="space-y-3">
                         <div className="border-b border-gray-200 pb-3">
-                          <h4 className="font-medium text-orange-900 text-sm sm:text-base">{assignment.bottle_name}</h4>
-                          <p className="text-xs text-gray-600 mt-1">Deco #{assignment.deco_no}</p>
+                          <h4 className="font-medium text-orange-900 text-sm sm:text-base">{assignment.name}</h4>
+                          <p className="text-xs text-gray-600 mt-1">ID: {assignment.component_id}</p>
                         </div>
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs sm:text-sm">
                           <div>
                             <span className="text-gray-600">Size:</span>
-                            <div className="font-medium text-orange-900">{assignment.neck_size}mm</div>
+                            <div className="font-medium text-orange-900">{assignment.neck_size || 'N/A'}mm</div>
                           </div>
                           <div>
                             <span className="text-gray-600">Capacity:</span>
-                            <div className="font-medium text-orange-900">{assignment.capacity}</div>
+                            <div className="font-medium text-orange-900">{assignment.capacity || 'N/A'}</div>
                           </div>
                           <div>
                             <span className="text-gray-600">Total:</span>
-                            <div className="font-medium text-orange-900">{assignment.quantity}</div>
+                            <div className="font-medium text-orange-900">{assignment.qty}</div>
                           </div>
                           <div>
                             <span className="text-gray-600">Remaining:</span>
@@ -346,7 +367,7 @@ const UpdateBottleQty = ({ isOpen, onClose, orderData, itemData, stockQuantities
                           <div className="flex justify-between items-center mb-2">
                             <span className="text-xs text-gray-600">Progress:</span>
                             <span className="text-xs text-gray-500">
-                              {assignment.completed_qty || 0} / {assignment.quantity}
+                              {assignment.completed_qty || 0} / {assignment.qty}
                             </span>
                           </div>
                           <ProgressBar

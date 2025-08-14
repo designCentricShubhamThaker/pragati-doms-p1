@@ -6,11 +6,8 @@ import MultiSelectDropdown from './components/MultiSelectDrowdown';
 import AddGlassProductMaster from './components/AddGlassProductMaster';
 import EditGlassMaster from './components/EditGlassMaster';
 
-const ModernGlassProductDashboard = () => {
-  const [allProducts, setAllProducts] = useState([]); // All products for filtering
-  const [loading, setLoading] = useState(true);
-  const [filterLoading, setFilterLoading] = useState(false);
-  const [error, setError] = useState(null);
+const ModernGlassProductDashboard = ({ allProducts, loading,
+  error, filterLoading }) => {
   const [showFilters, setShowFilters] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
   const [openDropdown, setOpenDropdown] = useState(null);
@@ -24,7 +21,7 @@ const ModernGlassProductDashboard = () => {
     search: '',
     categories: [],
     shapes: [],
-    types: [], 
+    types: [],
     capacities: [],
     neckDiameters: [],
     weights: [],
@@ -32,53 +29,6 @@ const ModernGlassProductDashboard = () => {
     stock_status: 'all'
   });
 
-
- const fetchAllProducts = async () => {
-    try {
-      setFilterLoading(true);
-      const response = await fetch("https://doms-k1fi.onrender.com/api/masters/glass/all");
-      const result = await response.json();
-
-      if (result.success) {
-        setAllProducts(result.data);
-        localStorage.setItem("glassMaster", JSON.stringify(result.data)); // Save to localStorage
-      } else {
-        setError("Failed to fetch all products data");
-      }
-    } catch (err) {
-      setError("Error connecting to API for all products");
-      console.error("API Error (all products):", err);
-    } finally {
-      setFilterLoading(false);
-    }
-  };
-
-
-
- useEffect(() => {
-  const initializeData = async () => {
-    try {
-      setLoading(true);
-      const cachedData = localStorage.getItem("glassMaster");
-      if (cachedData) {
-        try {
-          setAllProducts(JSON.parse(cachedData));
-        } catch {
-          console.error("Error parsing cached glassMaster, fetching fresh data...");
-          await fetchAllProducts();
-        }
-      } else {
-        await fetchAllProducts();
-      }
-    } catch (err) {
-      setError("Failed to initialize data");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  initializeData();
-}, []);
 
 
   const filterOptions = useMemo(() => {
@@ -107,7 +57,7 @@ const ModernGlassProductDashboard = () => {
     return {
       categories: getUniqueOptions('category'),
       shapes: getUniqueOptions('shape'),
-      types: getUniqueOptions('type'), // Added type options
+      types: getUniqueOptions('type'), 
       capacities: getUniqueOptions('capacity'),
       neckDiameters: getUniqueOptions('neck_diameter'),
       weights: getUniqueOptions('weight'),
@@ -115,7 +65,7 @@ const ModernGlassProductDashboard = () => {
     };
   }, [allProducts]);
 
-  // Filter all products based on current filters
+
   const filteredProducts = useMemo(() => {
     return allProducts.filter(product => {
       if (filters.search) {

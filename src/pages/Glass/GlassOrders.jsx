@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { Package, Edit, ChevronLeft, ChevronRight, Eye, EyeOff } from 'lucide-react';
+import { Package, Edit, ChevronLeft, ChevronRight } from 'lucide-react';
 import StockAvailabilityDialog from './components/StockAvailabilityDialog.jsx';
-import OrderTable from './components/OrderTable.jsx';
-import UpdateBottleQty from './components/UpdateBottleQty.jsx';
-import { getLocalStorageData, getStorageKeys, initializeLocalStorage, moveOrderInStorage, updateOrderInStorage } from '../../utils/orderStorage.jsx';
+import OrderTable from "./components/OrderTable.jsx"
+import UpdateBottleQty from './components/UpdateBottleQty.jsx'
 import TeamSearchAggregation from '../../utils/TeamSearchAggregation.jsx';
+import { getLocalStorageData, getStorageKeys, initializeLocalStorage } from '../../utils/orderStorage.jsx';
+import AddGlassStock from './components/AddGlassStock.jsx';
 
-const BottleOrders = ({ orderType = 'pending' }) => {
+const GlassOrders = ({ orderType = 'in_progress' }) => {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -14,73 +15,142 @@ const BottleOrders = ({ orderType = 'pending' }) => {
   const [expandedRows, setExpandedRows] = useState(new Set());
   const [showModal, setShowModal] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const [aggregatedBottles, setAggregatedBottles] = useState({});
+  const [aggregatedglasss, setAggregatedglasss] = useState({});
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [selectedItem, setSelectedItem] = useState(null);
   const [showStockDialog, setShowStockDialog] = useState(false);
   const [stockQuantities, setStockQuantities] = useState({});
+
+  const [showAddStockModal, setShowAddStockModal] = useState(false);
+  // Inside GlassOrders component
+  const [addStockGlassDetails, setAddStockGlassDetails] = useState(null);
+
+
   const ordersPerPage = 5;
   const TEAM = 'glass';
   const STORAGE_KEYS = getStorageKeys(TEAM);
+  const [glassMasterData, setGlassMasterData] = useState([]);
 
   const isOrderCompleted = (order) => {
     if (!order.items || order.items.length === 0) return false;
+
     return order.items.every(item => {
-      const glassComponents = getGlassComponents(item);
-      if (glassComponents.length === 0) return true;
-      return glassComponents.every(component => component.status === 'COMPLETED');
+      const glasss = item.glasss || [];
+      if (glasss.length === 0) return true;
+      return glasss.every(glass => glass.status === "Completed");
     });
   };
 
-  const getGlassComponents = (item) => {
-    if (!item.components || !Array.isArray(item.components)) return [];
-    return item.components.filter(component => 
-      component && component.component_type === 'glass'
+  const FilterGlassOrders = (items) => {
+    return items.filter(item =>
+      Array.isArray(item.components) &&
+      item.components.some(component => component.component_type === "glass")
     );
   };
 
-  const filterBottleOrders = (items) => {
-    return items.filter(item => {
-      const glassComponents = getGlassComponents(item);
-      return glassComponents.length > 0;
-    });
-  };
-
-  const initializeBottleStorage = async () => {
+  const initializeGlassStorage = async () => {
     try {
       console.log('Initializing localStorage with fresh API data...');
-      return await initializeLocalStorage(TEAM, isOrderCompleted, filterBottleOrders);
+      return await initializeLocalStorage(TEAM, FilterGlassOrders);
     } catch (error) {
       console.error('Error initializing localStorage:', error);
       throw error;
     }
+  };
+  const handleAddStock = (glassDetails) => {
+    setSearchTerm(glassDetails.name); // still search by name
+    setCurrentPage(1);
+    setAddStockGlassDetails(glassDetails); // store all details
+    setShowAddStockModal(true);
+  };
+
+  const handleCloseAddStock = () => {
+    console.log('Closing Add Stock modal');
+    setShowAddStockModal(false);
+    setAddStockSearchTerm('');
+
+    const refreshGlassData = () => {
+      try {
+        const data = JSON.parse(localStorage.getItem("glassMaster")) || [];
+        setGlassMasterData(data);
+        console.log('Glass master data refreshed after stock update');
+
+        // Also refresh aggregated data
+        calculateAggregatedglasss();
+      } catch (error) {
+        console.error('Error refreshing glass master data:', error);
+      }
+    };
+
+    refreshGlassData();
+  };
+
+  useEffect(() => {
+    const loadGlassMasterData = () => {
+      try {
+        const data = JSON.parse(localStorage.getItem("glassMaster")) || [];
+        setGlassMasterData(data);
+       
+      } catch (error) {
+        console.error('Error loading glass master data:', error);
+        setGlassMasterData([]);
+      }
+    };
+
+    loadGlassMasterData();
+  }, []);
+
+  const getAvailableStock = (glassComponent) => {
+    if (!glassComponent || !glassMasterData.length) return 0;
+
+    const matchedGlass = glassMasterData.find(g =>
+      g.name?.toLowerCase() === glassComponent.name?.toLowerCase() &&
+      Number(g.capacity) === Number(glassComponent.capacity) &&
+      Number(g.weight) === Number(glassComponent.weight) &&
+      Number(g.neck_diameter) === Number(glassComponent.neck_diameter)
+    );
+    return matchedGlass?.available_stock ?? 0;
   };
 
   useEffect(() => {
     const fetchOrders = async () => {
       try {
         setLoading(true);
-        const pendingData = getLocalStorageData(STORAGE_KEYS.PENDING);
-        const completedData = getLocalStorageData(STORAGE_KEYS.COMPLETED);
-        let pendingOrders, completedOrders;
+        const inProgressData = getLocalStorageData(STORAGE_KEYS.IN_PROGRESS);
+        const readyToDispatchData = getLocalStorageData(STORAGE_KEYS.READY_TO_DISPATCH);
+        const dispatchedData = getLocalStorageData(STORAGE_KEYS.DISPATCHED);
 
-        if (pendingData && completedData) {
-          pendingOrders = pendingData;
-          completedOrders = completedData;
+        let inProgressOrders, readyToDispatchOrders, dispatchedOrders;
+
+        if (inProgressData && readyToDispatchData && dispatchedData) {
+          inProgressOrders = inProgressData;
+          readyToDispatchOrders = readyToDispatchData;
+          dispatchedOrders = dispatchedData;
         } else {
-          const initialized = await initializeBottleStorage();
-          pendingOrders = initialized.pendingOrders;
-          completedOrders = initialized.completedOrders;
+          const initialized = await initializeGlassStorage();
+          inProgressOrders = initialized.inProgressOrders || [];
+          readyToDispatchOrders = initialized.readyToDispatchOrders || [];
+          dispatchedOrders = initialized.dispatchedOrders || [];
         }
-        const currentOrders = orderType === 'pending' ? pendingOrders : completedOrders;
+
+        let currentOrders = [];
+        if (orderType === "in_progress") {
+          currentOrders = inProgressOrders;
+        } else if (orderType === "ready_to_dispatch") {
+          currentOrders = readyToDispatchOrders;
+        } else if (orderType === "dispatched") {
+          currentOrders = dispatchedOrders;
+        }
+
         setOrders(currentOrders);
       } catch (err) {
         setError(err.message);
-        console.error('Error fetching orders:', err);
+        console.error("Error fetching orders:", err);
       } finally {
         setLoading(false);
       }
     };
+
     fetchOrders();
   }, [orderType]);
 
@@ -103,107 +173,130 @@ const BottleOrders = ({ orderType = 'pending' }) => {
     }
   }, [orderType]);
 
+  const calculateAggregatedglasss = () => {
+    const glassMap = {};
+
+    orders.forEach(order => {
+      order.items?.forEach(item => {
+        const glasses = item.components?.filter(c => c.component_type === "glass") || [];
+
+        glasses.forEach(glass => {
+          const key = glass.name?.toLowerCase().trim();
+          if (key) {
+            if (!glassMap[key]) {
+              const availableStock = getAvailableStock(glass);
+
+              glassMap[key] = {
+                glass_name: glass.name,
+                total_quantity: 0,
+                total_remaining: 0,
+                available_stock: availableStock,
+                capacity: glass.capacity,
+                weight: glass.weight,
+                neck_diameter: glass.neck_diameter,
+                orders: []
+              };
+            }
+
+            const remaining = getRemainingQty(glass);
+            glassMap[key].total_quantity += glass.qty || 0;
+            glassMap[key].total_remaining += remaining;
+            glassMap[key].orders.push({
+              order_number: order.order_number,
+              item_name: item.item_name,
+              quantity: glass.qty,
+              remaining: remaining,
+              status: glass.status,
+              customer_name: order.customer_name,
+              manager_name: order.manager_name
+            });
+          }
+        });
+      });
+    });
+
+    setAggregatedglasss(glassMap);
+  };
+
   useEffect(() => {
-    const calculateAggregatedBottles = () => {
-      const bottleMap = {};
-      orders.forEach(order => {
-        order.items?.forEach(item => {
-          const glassComponents = getGlassComponents(item);
-          glassComponents.forEach(component => {
-            const key = component.name?.toLowerCase().trim();
-            if (key) {
-              if (!bottleMap[key]) {
-                bottleMap[key] = {
-                  bottle_name: component.name,
-                  neck_size: component.neck_diameter,
-                  capacity: component.capacity,
-                  total_quantity: 0,
-                  total_remaining: 0,
-                  available_stock: 0, 
-                  orders: []
+    if (glassMasterData.length > 0) {
+      calculateAggregatedglasss();
+    }
+  }, [orders, glassMasterData]);
+
+  const filteredOrders = orders
+    .filter(order => {
+      if (!searchTerm.trim()) return true;
+      const searchLower = searchTerm.toLowerCase();
+
+      if (
+        order.order_number?.toLowerCase().includes(searchLower) ||
+        order.customer_name?.toLowerCase().includes(searchLower) ||
+        order.manager_name?.toLowerCase().includes(searchLower)
+      ) {
+        return true;
+      }
+
+      return order.items?.some(item => {
+        if (item.item_name?.toLowerCase().includes(searchLower)) return true;
+
+        return item.components?.some(component =>
+          component.name?.toLowerCase().includes(searchLower)
+        );
+      });
+    })
+    .map(order => {
+      if (searchTerm.trim()) {
+        const searchLower = searchTerm.toLowerCase();
+        if (
+          order.order_number?.toLowerCase().includes(searchLower) ||
+          order.customer_name?.toLowerCase().includes(searchLower) ||
+          order.manager_name?.toLowerCase().includes(searchLower)
+        ) {
+          return order;
+        }
+
+        const filteredItems =
+          order.items
+            ?.map(item => {
+              if (item.item_name?.toLowerCase().includes(searchLower)) {
+                return item;
+              }
+
+              const filteredComponents =
+                item.components?.filter(component =>
+                  component.name?.toLowerCase().includes(searchLower)
+                ) || [];
+
+              if (filteredComponents.length > 0) {
+                return {
+                  ...item,
+                  components: filteredComponents
                 };
               }
 
-              const remaining = getRemainingQty(component);
-              bottleMap[key].total_quantity += component.qty || 0;
-              bottleMap[key].total_remaining += remaining;
-              bottleMap[key].orders.push({
-                order_number: order.order_number,
-                item_name: item.item_name,
-                quantity: component.qty,
-                remaining: remaining,
-                data_code: component.data_code,
-                status: component.status
-              });
-            }
-          });
-        });
-      });
+              return null;
+            })
+            .filter(item => item !== null) || [];
 
-      setAggregatedBottles(bottleMap);
-    };
-
-    calculateAggregatedBottles();
-  }, [orders]);
-
-  const filteredOrders = orders.filter(order => {
-    if (!searchTerm.trim()) return true;
-    const searchLower = searchTerm.toLowerCase();
-    if (order.order_number?.toLowerCase().includes(searchLower) ||
-      order.customer_name?.toLowerCase().includes(searchLower) ||
-      order.manager_name?.toLowerCase().includes(searchLower)) {
-      return true;
-    }
-
-    return order.items?.some(item => {
-      if (item.item_name?.toLowerCase().includes(searchLower)) return true;
-      const glassComponents = getGlassComponents(item);
-      return glassComponents.some(component =>
-        component.name?.toLowerCase().includes(searchLower)
-      );
-    });
-  }).map(order => {
-    if (searchTerm.trim()) {
-      const searchLower = searchTerm.toLowerCase();
-      if (order.order_number?.toLowerCase().includes(searchLower) ||
-        order.customer_name?.toLowerCase().includes(searchLower) ||
-        order.manager_name?.toLowerCase().includes(searchLower)) {
-        return order;
-      }
-      const filteredItems = order.items?.map(item => {
-        if (item.item_name?.toLowerCase().includes(searchLower)) {
-          return item;
-        }
-        const glassComponents = getGlassComponents(item);
-        const filteredComponents = glassComponents.filter(component =>
-          component.name?.toLowerCase().includes(searchLower)
-        );
-        if (filteredComponents.length > 0) {
+        if (filteredItems.length > 0) {
           return {
-            ...item,
-            components: item.components.map(comp => 
-              comp.component_type === 'glass' && filteredComponents.includes(comp) ? comp : comp
-            )
+            ...order,
+            items: filteredItems
           };
         }
+
         return null;
-      }).filter(item => item !== null) || [];
-
-      if (filteredItems.length > 0) {
-        return {
-          ...order,
-          items: filteredItems
-        };
       }
-      return null;
-    }
 
-    return order;
-  }).filter(order => order !== null);
+      return order;
+    })
+    .filter(order => order !== null);
 
   const getRemainingQty = (component) => {
     if (!component || !component.qty) return 'N/A';
-    if (component.status === 'COMPLETED') return 0;
+    if (component.status === 'ready_to_dispatch') return 0;
+
     const totalQuantity = component.qty || 0;
     const completedQty = component.completed_qty || 0;
     const remaining = totalQuantity - completedQty;
@@ -212,16 +305,31 @@ const BottleOrders = ({ orderType = 'pending' }) => {
   };
 
   const getStatusStyle = (status) => {
-    switch (status) {
+    if (!status) return 'text-gray-500';
+
+    const normalizedStatus = status.toString().toUpperCase();
+
+    switch (normalizedStatus) {
       case 'COMPLETED':
         return 'text-green-900 font-semibold';
       case 'IN_PROGRESS':
         return 'text-orange-600 font-semibold';
       case 'PENDING':
         return 'text-orange-600 font-semibold';
+      case 'PENDING_PI':
+        return 'text-gray-600 font-semibold';
       default:
         return 'text-gray-500';
     }
+  };
+
+  const formatStatusLabel = (status) => {
+    if (!status) return 'N/A';
+    return status
+      .toString()
+      .replace(/_/g, ' ')
+      .toLowerCase()
+      .replace(/\b\w/g, (c) => c.toUpperCase());
   };
 
   const toggleRowExpansion = (rowId) => {
@@ -244,16 +352,19 @@ const BottleOrders = ({ orderType = 'pending' }) => {
   };
 
   const handleEditClick = (order, item) => {
+    console.log(order, item, "edit");
     setSelectedOrder(order);
     setSelectedItem(item);
     setShowStockDialog(true);
   };
 
   const handleStockQuantityChange = (componentId, value) => {
+    console.log(componentId, "ComponentId");
     setStockQuantities(prev => ({
       ...prev,
       [componentId]: value
     }));
+    console.log(stockQuantities, "stock quantities");
   };
 
   const handleStockYes = () => {
@@ -281,11 +392,12 @@ const BottleOrders = ({ orderType = 'pending' }) => {
     setSelectedItem(null);
   };
 
-  const handleCopyBottleName = (bottleName) => {
-    setSearchTerm(bottleName);
+  const handleCopyGlassName = (componentName) => {
+    setSearchTerm(componentName);
     setCurrentPage(1);
   };
 
+  // Search helpers
   const handleSearchCustomer = (customerName) => {
     setSearchTerm(customerName);
     setCurrentPage(1);
@@ -297,7 +409,9 @@ const BottleOrders = ({ orderType = 'pending' }) => {
   };
 
   const handleLocalOrderUpdate = (updatedOrder) => {
-    const wasCompleted = isOrderCompleted(orders.find(o => o.order_number === updatedOrder.order_number));
+    const wasCompleted = isOrderCompleted(
+      orders.find(o => o.order_number === updatedOrder.order_number)
+    );
     const isNowCompleted = isOrderCompleted(updatedOrder);
 
     if (wasCompleted !== isNowCompleted) {
@@ -306,32 +420,35 @@ const BottleOrders = ({ orderType = 'pending' }) => {
         moveOrderInStorage(TEAM, updatedOrder.order_number, 'pending', 'completed');
         updateOrderInStorage(TEAM, updatedOrder, 'completed');
         if (orderType === 'pending') {
-          const filteredOrders = orders.filter(order =>
+          setOrders(prev => prev.filter(order =>
             order.order_number !== updatedOrder.order_number
-          );
-          setOrders(filteredOrders);
+          ));
         }
       } else {
         console.log(`Order ${updatedOrder.order_number} moved back to pending`);
         moveOrderInStorage(TEAM, updatedOrder.order_number, 'completed', 'pending');
         updateOrderInStorage(TEAM, updatedOrder, 'pending');
         if (orderType === 'completed') {
-          const filteredOrders = orders.filter(order =>
+          setOrders(prev => prev.filter(order =>
             order.order_number !== updatedOrder.order_number
-          );
-          setOrders(filteredOrders);
+          ));
         }
       }
     } else {
       const currentStatus = isNowCompleted ? 'completed' : 'pending';
       updateOrderInStorage(TEAM, updatedOrder, currentStatus);
-      const updatedOrders = orders.map(order =>
-        order.order_number === updatedOrder.order_number ? updatedOrder : order
+      setOrders(prev =>
+        prev.map(order =>
+          order.order_number === updatedOrder.order_number ? updatedOrder : order
+        )
       );
-      setOrders(updatedOrders);
     }
 
     handleClose();
+  };
+
+  const handleDispatch = (order, item, component) => {
+    console.log(order, item, component, TEAM);
   };
 
   if (loading) {
@@ -417,15 +534,14 @@ const BottleOrders = ({ orderType = 'pending' }) => {
 
   return (
     <div className="p-5 max-w-full overflow-hidden">
-      <div>
-        <TeamSearchAggregation
-          teamType="bottle"
-          searchTerm={searchTerm}
-          setSearchTerm={setSearchTerm}
-          aggregatedItems={aggregatedBottles}
-          setCurrentPage={setCurrentPage}
-        />
-      </div>
+      <TeamSearchAggregation
+        teamType="glass"
+        searchTerm={searchTerm}
+        setSearchTerm={setSearchTerm}
+        aggregatedItems={aggregatedglasss}
+        setCurrentPage={setCurrentPage}
+        onAddStock={handleAddStock} // Now this function is defined
+      />
 
       <OrderTable
         currentOrders={currentOrders}
@@ -434,13 +550,17 @@ const BottleOrders = ({ orderType = 'pending' }) => {
         handleEditClick={handleEditClick}
         handleSearchCustomer={handleSearchCustomer}
         handleSearchManager={handleSearchManager}
-        handleCopyBottleName={handleCopyBottleName}
+        handleCopyGlassName={handleCopyGlassName}
         expandedRows={expandedRows}
         toggleRowExpansion={toggleRowExpansion}
         getStatusStyle={getStatusStyle}
-        getGlassComponents={getGlassComponents}
+        formatStatusLabel={formatStatusLabel}
+        handleDispatch={handleDispatch}
+        getAvailableStock={getAvailableStock}
       />
+
       {renderPagination()}
+
       <StockAvailabilityDialog
         showStockDialog={showStockDialog}
         selectedItem={selectedItem}
@@ -452,10 +572,11 @@ const BottleOrders = ({ orderType = 'pending' }) => {
         handleStockYes={handleStockYes}
         getRemainingQty={getRemainingQty}
         setStockQuantities={setStockQuantities}
-        aggregatedBottles={aggregatedBottles}
+        aggregatedBottles={aggregatedglasss}
         searchTerm={searchTerm}
-        getGlassComponents={getGlassComponents}
+        getAvailableStock={getAvailableStock}
       />
+
       {showModal && selectedOrder && selectedItem && (
         <UpdateBottleQty
           isOpen={showModal}
@@ -464,13 +585,21 @@ const BottleOrders = ({ orderType = 'pending' }) => {
           itemData={selectedItem}
           stockQuantities={stockQuantities}
           onUpdate={handleLocalOrderUpdate}
-          aggregatedBottles={aggregatedBottles}
+          aggregatedBottles={aggregatedglasss}
           searchTerm={searchTerm}
-          getGlassComponents={getGlassComponents}
+          getAvailableStock={getAvailableStock}
+        />
+      )}
+
+      {showAddStockModal && (
+        <AddGlassStock
+          initialGlassDetails={addStockGlassDetails}
+          onClose={handleCloseAddStock}
+          glassDetails={addStockGlassDetails}
         />
       )}
     </div>
   );
 };
 
-export default BottleOrders;
+export default GlassOrders;

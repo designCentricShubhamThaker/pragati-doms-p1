@@ -5,9 +5,9 @@ import PendingOrders from './PendingOrders';
 import LiveOrders from './LiveOrders';
 import CompletedOrders from './CompletedOrders';
 import Analytics from './Analytics';
-import BottleDashboard from '../Bottle/BottleDashboard';
 import { useCurrentDateTime } from '../../hooks/useCurrentDateTime';
 import PrintingDashboard from '../Printing/PrintingDashbaord';
+import GlassDashboard from '../Glass/GlassDashboard';
 
 
 const Dashboard = () => {
@@ -116,7 +116,7 @@ const Dashboard = () => {
       case 'bottle':
         return (
           <div className='mt-2'>
-            <BottleDashboard isEmbedded={true} />
+            <GlassDashboard isEmbedded={true} />
           </div>
         );
       case 'printing':

@@ -14,7 +14,8 @@ const GlassDashboard = ({ isEmbedded = false }) => {
   const [allProducts, setAllProducts] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-   const [filterLoading, setFilterLoading] = useState(false);
+  const [filterLoading, setFilterLoading] = useState(false);
+  const [glassMasterReady, setGlassMasterReady] = useState(false); // Add this state
 
   const fetchAllProducts = async () => {
     try {
@@ -24,8 +25,14 @@ const GlassDashboard = ({ isEmbedded = false }) => {
 
       if (result.success) {
         setAllProducts(result.data);
-        console.log('data loaded')
+        console.log('Dashboard: Glass master data loaded');
         localStorage.setItem("glassMaster", JSON.stringify(result.data));
+        setGlassMasterReady(true); // Set ready after storing
+        
+        // Dispatch event to notify other components
+        window.dispatchEvent(new CustomEvent('glassMasterUpdated', {
+          detail: { data: result.data }
+        }));
       } else {
         setError("Failed to fetch all products data");
       }
@@ -37,21 +44,24 @@ const GlassDashboard = ({ isEmbedded = false }) => {
     }
   };
 
-
-
   useEffect(() => {
     const initializeData = async () => {
       try {
         setLoading(true);
         const cachedData = localStorage.getItem("glassMaster");
-        if (cachedData) {
+        
+        if (cachedData && cachedData !== 'undefined' && cachedData !== 'null') {
           try {
-            setAllProducts(JSON.parse(cachedData));
+            const parsedData = JSON.parse(cachedData);
+            setAllProducts(parsedData);
+            setGlassMasterReady(true); // Set ready immediately if cached data exists
+            console.log('Dashboard: Using cached glass master data');
           } catch {
             console.error("Error parsing cached glassMaster, fetching fresh data...");
             await fetchAllProducts();
           }
         } else {
+          console.log('Dashboard: No cached data, fetching fresh glass master data');
           await fetchAllProducts();
         }
       } catch (err) {
@@ -66,7 +76,7 @@ const GlassDashboard = ({ isEmbedded = false }) => {
 
   const handleLogout = () => {
     console.log('Logout clicked');
-    localStorage.clear()
+    localStorage.clear();
   };
 
   const handleMenuClick = (itemId) => {
@@ -83,12 +93,19 @@ const GlassDashboard = ({ isEmbedded = false }) => {
   const renderActiveComponent = () => {
     switch (activeMenuItem) {
       case 'liveOrders':
-        return <GlassOrders orderType='in_progress' />;
+        return <GlassOrders orderType='in_progress' glassMasterReady={glassMasterReady} />;
       case 'ReadyToDispatch':
-        return <GlassOrders orderType='ready_to_dispatch' />;
+        return <GlassOrders orderType='ready_to_dispatch' glassMasterReady={glassMasterReady} />;
       case 'BottleMaster':
-        return <BottleMaster allProducts={allProducts} setAllProducts={setAllProducts} loading={loading}
-          error={error} setFilterLoading={setFilterLoading} filterLoading={filterLoading} />;
+        return <BottleMaster 
+          allProducts={allProducts} 
+          setAllProducts={setAllProducts} 
+          loading={loading}
+          error={error} 
+          setFilterLoading={setFilterLoading} 
+          filterLoading={filterLoading} 
+          setGlassMasterReady={setGlassMasterReady}
+        />;
       default:
         return (
           <div className="p-4">
@@ -139,10 +156,11 @@ const GlassDashboard = ({ isEmbedded = false }) => {
                 <div key={item.id} className="mb-2">
                   <button
                     onClick={() => handleMenuClick(item.id)}
-                    className={`w-full flex items-center justify-between px-3 py-2 text-sm font-medium rounded-lg transition-all duration-200 ${activeMenuItem === item.id
-                      ? 'text-orange-600 bg-orange-50'
-                      : 'text-gray-600 hover:text-orange-600 hover:bg-orange-50/50'
-                      }`}
+                    className={`w-full flex items-center justify-between px-3 py-2 text-sm font-medium rounded-lg transition-all duration-200 ${
+                      activeMenuItem === item.id
+                        ? 'text-orange-600 bg-orange-50'
+                        : 'text-gray-600 hover:text-orange-600 hover:bg-orange-50/50'
+                    }`}
                   >
                     {item.label}
                   </button>
@@ -170,10 +188,11 @@ const GlassDashboard = ({ isEmbedded = false }) => {
               <div key={item.id} className="relative">
                 <button
                   onClick={() => handleMenuClick(item.id)}
-                  className={`flex items-center px-4 py-3 text-sm font-medium whitespace-nowrap transition-all duration-200 border-b-2 z-0 ${activeMenuItem === item.id
-                    ? 'text-orange-600 border-orange-500 bg-orange-50'
-                    : 'text-gray-600 border-transparent hover:text-orange-600 hover:bg-orange-50/50'
-                    }`}
+                  className={`flex items-center px-4 py-3 text-sm font-medium whitespace-nowrap transition-all duration-200 border-b-2 z-0 ${
+                    activeMenuItem === item.id
+                      ? 'text-orange-600 border-orange-500 bg-orange-50'
+                      : 'text-gray-600 border-transparent hover:text-orange-600 hover:bg-orange-50/50'
+                  }`}
                 >
                   {item.label}
                 </button>

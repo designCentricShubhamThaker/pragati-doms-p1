@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 
 const TeamSearchAggregation = ({
   teamType,
@@ -9,21 +9,77 @@ const TeamSearchAggregation = ({
   onAddStock
 }) => {
 
-  const glassMasterData = React.useMemo(() => {
+  const [glassMasterData, setGlassMasterData] = useState([]);
+
+  const loadGlassMasterData = () => {
     try {
-      return JSON.parse(localStorage.getItem("glassMaster")) || [];
-    } catch {
-      return [];
+      const stored = localStorage.getItem("glassMaster");
+      if (stored && stored !== 'undefined' && stored !== 'null') {
+        const data = JSON.parse(stored);
+        setGlassMasterData(data);
+        // console.log('TeamSearchAggregation: glassMaster loaded/updated, count:', data.length);
+      } else {
+        setGlassMasterData([]);
+      }
+    } catch (error) {
+      console.error('Error loading glassMaster data:', error);
+      setGlassMasterData([]);
     }
+  };
+
+  useEffect(() => {
+    loadGlassMasterData();
+
+    // Listen for storage changes from other components
+    const handleStorageChange = (e) => {
+      if (e.key === 'glassMaster') {
+        console.log('TeamSearchAggregation: glassMaster localStorage changed, reloading...');
+        loadGlassMasterData();
+      }
+    };
+
+    // Listen for custom storage events dispatched by AddGlassStock
+    const handleCustomStorageChange = (e) => {
+      if (e.key === 'glassMaster') {
+        console.log('TeamSearchAggregation: glassMaster custom storage event received');
+        loadGlassMasterData();
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    window.addEventListener('storage', handleCustomStorageChange);
+
+    // Periodic check with reduced frequency for reliability
+    const interval = setInterval(() => {
+      loadGlassMasterData();
+    }, 3000);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('storage', handleCustomStorageChange);
+    };
   }, []);
 
-  const searchResults = searchTerm.trim()
-    ? Object.entries(aggregatedItems)
+  // Also reload when aggregatedItems changes (indicates data refresh)
+  useEffect(() => {
+    if (Object.keys(aggregatedItems).length > 0) {
+      loadGlassMasterData();
+    }
+  }, [aggregatedItems]);
+
+  const searchResults = useMemo(() => {
+    if (!searchTerm.trim()) return [];
+
+    // console.log('TeamSearchAggregation: Computing search results with glassMaster count:', glassMasterData.length);
+
+    return Object.entries(aggregatedItems)
       .map(([key, item]) => {
         const nameKey = `${teamType}_name`;
 
+        // Find matching glass from master data for current available stock
         const matchedGlass = glassMasterData.find(g =>
-          g.glass_name?.toLowerCase() === item[nameKey]?.toLowerCase() &&
+          g.name?.toLowerCase().trim() === item[nameKey]?.toLowerCase().trim() &&
           Number(g.capacity) === Number(item.capacity) &&
           Number(g.weight) === Number(item.weight) &&
           Number(g.neck_diameter) === Number(item.neck_diameter)
@@ -40,8 +96,22 @@ const TeamSearchAggregation = ({
         ];
       })
       .filter(([key, item]) => {
-        const searchLower = searchTerm.toLowerCase();
         const nameKey = `${teamType}_name`;
+
+        // Check if searchTerm is numeric
+        if (!isNaN(searchTerm) && searchTerm.trim() !== "") {
+          const numSearch = Number(searchTerm);
+
+          return (
+            item.capacity === numSearch ||
+            item.weight === numSearch ||
+            item.neck_diameter === numSearch ||
+            item.available_stock === numSearch
+          );
+        }
+
+        // String-based search (case-insensitive)
+        const searchLower = searchTerm.toLowerCase();
 
         if (item[nameKey]?.toLowerCase().includes(searchLower)) return true;
 
@@ -50,8 +120,9 @@ const TeamSearchAggregation = ({
           order.manager_name?.toLowerCase().includes(searchLower) ||
           order.order_number?.toLowerCase().includes(searchLower)
         );
-      })
-    : [];
+      });
+
+  }, [searchTerm, aggregatedItems, glassMasterData, teamType]);
 
   return (
     <div className="mb-6 space-y-3">
@@ -116,7 +187,7 @@ const TeamSearchAggregation = ({
       {searchTerm.trim() && searchResults.length > 0 && (
         <div className="bg-[#FFF0E7] rounded-lg p-4">
           <h4 className="text-sm font-semibold text-orange-800 mb-3">
-            Search Results for "{searchTerm}"
+            Search Results for "{searchTerm}" (Stock data: {glassMasterData.length} items loaded)
           </h4>
           <div className="space-y-3">
             {searchResults.map(([key, item]) => (
@@ -163,7 +234,5 @@ const TeamSearchAggregation = ({
     </div>
   );
 };
-
-
 
 export default TeamSearchAggregation;

@@ -12,7 +12,7 @@ const StockAvailabilityDialog = ({
   handleStockYes,
   getRemainingQty,
   setStockQuantities,
-  getGlassComponents,
+  getAvailableStock, // New prop to get stock from master data
 }) => {
   if (!showStockDialog || !selectedItem) return null;
 
@@ -35,13 +35,14 @@ const StockAvailabilityDialog = ({
     qty !== '' && parseInt(qty) > 0
   );
 
-  console.log('rendered')
+  console.log('StockAvailabilityDialog rendered');
 
   const renderComponentCard = (component, index, isCompleted = false) => {
     const remaining = getRemainingQty(component);
-    // For now, we don't have available_stock in the new API structure
-    // You may need to add this field or calculate it differently
-    const maxStock = isCompleted ? 0 : Math.min(remaining, 0); // Set to 0 for now since no available_stock
+    // Get available stock from master data using the new function
+    const availableStock = getAvailableStock ? getAvailableStock(component) : 0;
+    const maxStock = isCompleted ? 0 : Math.min(remaining, availableStock);
+    
     const colorClasses = isCompleted 
       ? ['bg-gray-50', 'bg-gray-100'] 
       : ['bg-orange-50', 'bg-orange-100', 'bg-yellow-50', 'bg-yellow-100'];
@@ -62,6 +63,7 @@ const StockAvailabilityDialog = ({
           </div>
         )}
 
+        {/* Desktop Layout */}
         <div className="hidden md:block">
           <div className="flex items-center justify-between mb-4">
             <div className="flex-1 pr-20"> 
@@ -82,20 +84,21 @@ const StockAvailabilityDialog = ({
             </div>
             <div className="text-right ml-4">
               <p className="text-sm text-gray-600">
-                <span className="font-medium">Available:</span> 0 {/* No available_stock in new API */}
+                <span className="font-medium">Available:</span> {availableStock}
               </p>
               {!isCompleted && (
                 <>
                   <p className="text-sm text-green-900 font-medium">
                     Max Use: {maxStock}
                   </p>
-                  <button
-                    onClick={() => handleStockQuantityChange(component.component_id, maxStock.toString())}
-                    className="mt-1 text-xs text-orange-600 hover:text-orange-800 underline"
-                    disabled={maxStock === 0}
-                  >
-                    Use All ({maxStock})
-                  </button>
+                  {maxStock > 0 && (
+                    <button
+                      onClick={() => handleStockQuantityChange(component.component_id, maxStock.toString())}
+                      className="mt-1 text-xs text-orange-600 hover:text-orange-800 underline"
+                    >
+                      Use All ({maxStock})
+                    </button>
+                  )}
                 </>
               )}
             </div>
@@ -135,6 +138,7 @@ const StockAvailabilityDialog = ({
           </div>
         </div>
 
+        {/* Mobile Layout */}
         <div className="md:hidden">
           <div className="mb-3 pr-16"> 
             <h4 className={`font-medium text-sm ${isCompleted ? 'text-green-800' : 'text-orange-900'}`}>
@@ -147,7 +151,7 @@ const StockAvailabilityDialog = ({
               ) : (
                 <>
                   <div><span className="font-medium">Need:</span> {remaining}</div>
-                  <div><span className="font-medium">Available:</span> 0</div> {/* No available_stock in new API */}
+                  <div><span className="font-medium">Available:</span> {availableStock}</div>
                   <div className="text-green-900 font-medium">Max Use: {maxStock}</div>
                 </>
               )}
@@ -163,13 +167,14 @@ const StockAvailabilityDialog = ({
               <>
                 <div className="flex items-center justify-between">
                   <label className="text-xs text-gray-700 font-medium">Stock Qty to Use:</label>
-                  <button
-                    onClick={() => handleStockQuantityChange(component.component_id, maxStock.toString())}
-                    className="text-xs text-orange-600 hover:text-orange-800 underline"
-                    disabled={maxStock === 0}
-                  >
-                    Use All ({maxStock})
-                  </button>
+                  {maxStock > 0 && (
+                    <button
+                      onClick={() => handleStockQuantityChange(component.component_id, maxStock.toString())}
+                      className="text-xs text-orange-600 hover:text-orange-800 underline"
+                    >
+                      Use All ({maxStock})
+                    </button>
+                  )}
                 </div>
                 
                 <input
@@ -219,7 +224,10 @@ const StockAvailabilityDialog = ({
 
         <div className="p-3 sm:p-6">
           <div className="space-y-3 sm:space-y-4 mb-4 sm:mb-6 max-h-60 sm:max-h-80 overflow-y-auto">
+            {/* Render pending components first */}
             {pendingComponents.map((component, index) => renderComponentCard(component, index, false))}
+            
+            {/* Show divider if both completed and pending exist */}
             {completedComponents.length > 0 && pendingComponents.length > 0 && (
               <div className="flex items-center gap-3 py-2">
                 <hr className="flex-1 border-gray-300" />
@@ -230,9 +238,11 @@ const StockAvailabilityDialog = ({
               </div>
             )}
             
+            {/* Render completed components */}
             {completedComponents.map((component, index) => renderComponentCard(component, index, true))}
           </div>
 
+          {/* Action buttons */}
           <div className="space-y-2 sm:space-y-0 sm:flex sm:flex-wrap sm:justify-end sm:gap-3">
             <button
               onClick={handleStockDialogClose}
@@ -249,13 +259,15 @@ const StockAvailabilityDialog = ({
                 >
                   No Glass Stock Available
                 </button>
+                
                 <button
                   onClick={() => {
+                    // Set max available stock for all pending components
                     const allMaxStock = {};
                     pendingComponents.forEach(component => {
                       const remaining = getRemainingQty(component);
-                      // Since we don't have available_stock in new API, using 0 for now
-                      const maxStock = Math.min(remaining, 0);
+                      const availableStock = getAvailableStock ? getAvailableStock(component) : 0;
+                      const maxStock = Math.min(remaining, availableStock);
                       if (maxStock > 0) {
                         allMaxStock[component.component_id] = maxStock.toString();
                       }
@@ -268,6 +280,7 @@ const StockAvailabilityDialog = ({
                   <span className="hidden sm:inline">Use All Available Glass Stock</span>
                   <span className="sm:hidden">Use All Glass Stock</span>
                 </button>
+                
                 <button
                   onClick={handleStockYes}
                   disabled={!hasStockQuantities}
@@ -283,6 +296,7 @@ const StockAvailabilityDialog = ({
               </>
             )}
             
+            {/* Show close button when all components are completed */}
             {pendingComponents.length === 0 && completedComponents.length > 0 && (
               <button
                 onClick={handleStockDialogClose}

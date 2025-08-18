@@ -14,8 +14,13 @@ const OrderTable = ({
   getStatusStyle,
   handleDispatch,
   formatStatusLabel,
-  getAvailableStock
+  getAvailableStock,
+  
+
 }) => {
+
+
+
   if (currentOrders.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-16 px-4">
@@ -204,11 +209,11 @@ const OrderTable = ({
                       </div>
 
                       <div className="text-center text-gray-800">
-                        {glass?.available_stock ?? 0}
+                        {glass ? getAvailableStock(glass) : 0}
                       </div>
 
                       <div className="text-center text-gray-800">
-                        {glass ? getAvailableStock(glass) : 0}
+                        0
                       </div>
 
                       <div className="text-center text-gray-800">
@@ -376,7 +381,8 @@ const OrderTable = ({
                                   <span className="text-gray-500">Neck Diameter:</span>{" "}
                                   {glass.neck_diameter ?? "N/A"}mm
                                 </div>
-                                <div className="text-center text-gray-800">
+                                <div>
+                                  <span className="text-gray-500">Available Stock:</span>{" "}
                                   {glass ? getAvailableStock(glass) : 0}
                                 </div>
                                 <div>

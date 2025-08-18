@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { Search, Plus, Minus, Package, X, Check } from 'lucide-react';
 
 const AddGlassStock = ({ initialSearchTerm = "", glassDetails, onClose }) => {
-  console.log('glassDetails received:', glassDetails);
   const [searchTerm, setSearchTerm] = useState(initialSearchTerm);
   const [glassMasterData, setGlassMasterData] = useState([]);
   const [filteredGlasses, setFilteredGlasses] = useState([]);
@@ -25,7 +24,6 @@ const AddGlassStock = ({ initialSearchTerm = "", glassDetails, onClose }) => {
     loadGlassMasterData();
   }, []);
 
-  // Updated filtering logic to handle both search and glassDetails
   useEffect(() => {
     if (glassMasterData.length === 0) {
       setFilteredGlasses([]);
@@ -36,86 +34,114 @@ const AddGlassStock = ({ initialSearchTerm = "", glassDetails, onClose }) => {
 
     if (glassDetails) {
       filtered = glassMasterData.filter((g) => {
-
-        const glassName = g.glass_name || g.name;
-        const detailsName = glassDetails.glass_name || glassDetails.name;
-
-        console.log('Comparing:', {
-          glassName: glassName?.trim().toLowerCase(),
-          detailsName: detailsName?.trim().toLowerCase(),
-          glassCapacity: Number(g.capacity),
-          detailsCapacity: Number(glassDetails.capacity),
-          glassWeight: Number(g.weight),
-          detailsWeight: Number(glassDetails.weight),
-          glassNeckDiameter: Number(g.neck_diameter),
-          detailsNeckDiameter: Number(glassDetails.neck_diameter)
-        });
-
-        const nameMatch = glassName?.trim().toLowerCase() === detailsName?.trim().toLowerCase();
+        const nameMatch = g.name?.trim().toLowerCase() === glassDetails.name?.trim().toLowerCase();
         const capacityMatch = Number(g.capacity) === Number(glassDetails.capacity);
         const weightMatch = Number(g.weight) === Number(glassDetails.weight);
         const neckDiameterMatch = Number(g.neck_diameter) === Number(glassDetails.neck_diameter);
 
         return nameMatch && capacityMatch && weightMatch && neckDiameterMatch;
       });
-
-      console.log("Filtered glasses by glassDetails:", filtered);
     } else if (searchTerm.trim()) {
       const searchLower = searchTerm.trim().toLowerCase();
       filtered = glassMasterData.filter((g) => {
-        const glassName = g.glass_name || g.name || '';
-        const glassId = g.glass_id || g.id || '';
+        const glassName = g.name || '';
+        const dataCode = g.data_code || '';
 
         return glassName.toLowerCase().includes(searchLower) ||
-          glassId.toLowerCase().includes(searchLower);
+          dataCode.toLowerCase().includes(searchLower);
       });
-
-      console.log("Filtered glasses by search term:", filtered);
     }
 
     setFilteredGlasses(filtered);
   }, [glassDetails, glassMasterData, searchTerm]);
 
-  const handleStockChange = (glassId, value) => {
+  const handleStockChange = (dataCode, value) => {
     const cleanValue = value.replace(/[^+\-0-9]/g, '');
     setStockUpdates(prev => ({
       ...prev,
-      [glassId]: cleanValue
+      [dataCode]: cleanValue
     }));
   };
-const calculateNewStock = (updateValue) => {
-  if (!updateValue || updateValue === '') {
-    return 0; // no value
-  }
 
-  const cleanValue = updateValue.toString().trim();
-  const parsed = parseInt(cleanValue, 10);
+  // Calculate new stock value for frontend display and localStorage update
+  const calculateNewStock = (currentStock, updateValue) => {
+    if (!updateValue || updateValue === '') {
+      return currentStock || 0;
+    }
 
-  return isNaN(parsed) ? 0 : parsed; // Just return the parsed number
-};
+    const cleanValue = updateValue.toString().trim();
+    const currentStockNum = Number(currentStock) || 0;
+    
+    // Handle absolute values (no + or - prefix)
+    if (!cleanValue.startsWith('+') && !cleanValue.startsWith('-')) {
+      const parsed = parseInt(cleanValue, 10);
+      return isNaN(parsed) ? currentStockNum : parsed;
+    }
+    
+    // Handle adjustments (+ or - prefix)
+    if (cleanValue.startsWith('+')) {
+      const adjustment = parseInt(cleanValue.substring(1), 10);
+      if (isNaN(adjustment)) return currentStockNum;
+      return Math.max(0, currentStockNum + adjustment);
+    }
+    
+    if (cleanValue.startsWith('-')) {
+      const adjustment = parseInt(cleanValue.substring(1), 10);
+      if (isNaN(adjustment)) return currentStockNum;
+      return Math.max(0, currentStockNum - adjustment);
+    }
+    
+    return currentStockNum;
+  };
 
 
+  const calculateAdjustment = (currentStock, updateValue) => {
+    if (!updateValue || updateValue === '') {
+      return 0;
+    }
+
+    const cleanValue = updateValue.toString().trim();
+    const currentStockNum = Number(currentStock) || 0;
+    
+    if (!cleanValue.startsWith('+') && !cleanValue.startsWith('-')) {
+      const parsed = parseInt(cleanValue, 10);
+      if (isNaN(parsed)) return 0;
+      return parsed - currentStockNum; 
+    }
+    
+    if (cleanValue.startsWith('+')) {
+      const adjustment = parseInt(cleanValue.substring(1), 10);
+      return isNaN(adjustment) ? 0 : adjustment;
+    }
+    
+    if (cleanValue.startsWith('-')) {
+      const adjustment = parseInt(cleanValue.substring(1), 10);
+      return isNaN(adjustment) ? 0 : -adjustment;
+    }
+    
+    return 0;
+  };
 
   const updateStock = async (glass) => {
-    const updateValue = stockUpdates[glass.glass_id];
+    const updateValue = stockUpdates[glass.data_code];
     if (!updateValue || updateValue === '' || updateValue === '+' || updateValue === '-') {
       return;
     }
-    const newStock = calculateNewStock( updateValue);
 
+    const currentStock = glass.available_stock || 0;
+    const adjustment = calculateAdjustment(currentStock, updateValue);
+    const newStock = calculateNewStock(currentStock, updateValue);
 
-    setUpdateLoading(prev => ({ ...prev, [glass.glass_id]: true }));
+    setUpdateLoading(prev => ({ ...prev, [glass.data_code]: true }));
 
     try {
-      const adjustment = newStock ;
-
       const response = await fetch(`https://doms-k1fi.onrender.com/api/masters/glass/stock/adjust/${glass.data_code}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          adjustment: adjustment
+          adjustment: adjustment 
         })
       });
 
@@ -124,37 +150,44 @@ const calculateNewStock = (updateValue) => {
       }
 
       const result = await response.json();
+      console.log('API response:', result);
 
-      setGlassMasterData(prev =>
-        prev.map(g =>
-          g.glass_id === glass.glass_id
-            ? { ...g, available_stock: newStock }
-            : g
-        )
-      );
       const updatedData = glassMasterData.map(g =>
-        g.glass_id === glass.glass_id
+        g.data_code === glass.data_code
           ? { ...g, available_stock: newStock }
           : g
       );
+      
+      setGlassMasterData(updatedData);
       localStorage.setItem("glassMaster", JSON.stringify(updatedData));
+      window.dispatchEvent(new StorageEvent('storage', {
+        key: 'glassMaster',
+        oldValue: JSON.stringify(glassMasterData),
+        newValue: JSON.stringify(updatedData),
+        storageArea: localStorage
+      }));
+      
+      window.dispatchEvent(new CustomEvent('glassMasterUpdated', {
+        detail: { updatedData, dataCode: glass.data_code, newStock }
+      }));
+      
+      console.log('AddGlassStock: Updated localStorage and dispatched events for', glass.data_code);
 
       setStockUpdates(prev => {
         const newUpdates = { ...prev };
-        delete newUpdates[glass.glass_id];
+        delete newUpdates[glass.data_code];
         return newUpdates;
       });
 
-      // Show success message
       setSuccessMessages(prev => ({
         ...prev,
-        [glass.glass_id]: `Stock updated to ${newStock}`
+        [glass.data_code]: `Stock updated to ${newStock}`
       }));
 
       setTimeout(() => {
         setSuccessMessages(prev => {
           const newMessages = { ...prev };
-          delete newMessages[glass.glass_id];
+          delete newMessages[glass.data_code];
           return newMessages;
         });
       }, 3000);
@@ -165,18 +198,19 @@ const calculateNewStock = (updateValue) => {
     } finally {
       setUpdateLoading(prev => {
         const newLoading = { ...prev };
-        delete newLoading[glass.glass_id];
+        delete newLoading[glass.data_code];
         return newLoading;
       });
     }
   };
 
+  // Preview calculation for display
   const getPreviewStock = (glass) => {
-    const updateValue = stockUpdates[glass.glass_id];
+    const updateValue = stockUpdates[glass.data_code];
     if (!updateValue || updateValue === '' || updateValue === '+' || updateValue === '-') {
       return glass.available_stock || 0;
     }
-    return calculateNewStock( updateValue);
+    return calculateNewStock(glass.available_stock, updateValue);
   };
 
   return (
@@ -205,7 +239,7 @@ const calculateNewStock = (updateValue) => {
                 type="text"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Search glass by name or ID..."
+                placeholder="Search glass by name or data code..."
                 className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
               />
             </div>
@@ -227,7 +261,7 @@ const calculateNewStock = (updateValue) => {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
               <div>
                 <span className="text-gray-500">Name:</span>
-                <p className="font-medium">{glassDetails.glass_name || glassDetails.name}</p>
+                <p className="font-medium">{glassDetails.name}</p>
               </div>
               <div>
                 <span className="text-gray-500">Capacity:</span>
@@ -250,7 +284,7 @@ const calculateNewStock = (updateValue) => {
           {!glassDetails && !searchTerm.trim() ? (
             <div className="p-8 text-center text-gray-500">
               <Package className="w-12 h-12 mx-auto mb-4 text-gray-300" />
-              <p>Enter a glass name or ID to search</p>
+              <p>Enter a glass name or data code to search</p>
             </div>
           ) : filteredGlasses.length === 0 ? (
             <div className="p-8 text-center text-gray-500">
@@ -258,7 +292,7 @@ const calculateNewStock = (updateValue) => {
               <p>No glasses found matching the criteria</p>
               {glassDetails && (
                 <div className="mt-4 text-sm text-red-600">
-                  <p>Looking for: {glassDetails.glass_name || glassDetails.name}</p>
+                  <p>Looking for: {glassDetails.name}</p>
                   <p>Capacity: {glassDetails.capacity}, Weight: {glassDetails.weight}, Neck Diameter: {glassDetails.neck_diameter}</p>
                 </div>
               )}
@@ -267,7 +301,7 @@ const calculateNewStock = (updateValue) => {
             <div className="p-6 space-y-4">
               {filteredGlasses.map((glass) => (
                 <div
-                  key={glass.glass_id}
+                  key={glass.data_code}
                   className="border border-gray-200 rounded-lg p-4 hover:bg-gray-50 transition-colors"
                 >
                   <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
@@ -276,14 +310,14 @@ const calculateNewStock = (updateValue) => {
                       <div className="flex items-start justify-between">
                         <div>
                           <h3 className="font-semibold text-gray-900">
-                            {glass.glass_name || glass.name}
+                            {glass.name}
                           </h3>
-                          <p className="text-sm text-gray-600 mt-1">ID: {glass.glass_id}</p>
+                          <p className="text-sm text-gray-600 mt-1">Code: {glass.data_code}</p>
                         </div>
-                        {successMessages[glass.glass_id] && (
+                        {successMessages[glass.data_code] && (
                           <div className="flex items-center gap-1 text-green-600 text-sm bg-green-50 px-2 py-1 rounded">
                             <Check className="w-4 h-4" />
-                            {successMessages[glass.glass_id]}
+                            {successMessages[glass.data_code]}
                           </div>
                         )}
                       </div>
@@ -313,13 +347,13 @@ const calculateNewStock = (updateValue) => {
                       <div className="flex-1">
                         <input
                           type="text"
-                          value={stockUpdates[glass.glass_id] || ''}
-                          onChange={(e) => handleStockChange(glass.glass_id, e.target.value)}
+                          value={stockUpdates[glass.data_code] || ''}
+                          onChange={(e) => handleStockChange(glass.data_code, e.target.value)}
                           placeholder="e.g. +50, -20, or 100"
                           className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500 text-center"
-                          disabled={updateLoading[glass.glass_id]}
+                          disabled={updateLoading[glass.data_code]}
                         />
-                        {stockUpdates[glass.glass_id] && (
+                        {stockUpdates[glass.data_code] && (
                           <p className="text-xs text-gray-500 mt-1 text-center">
                             New stock: {getPreviewStock(glass)}
                           </p>
@@ -329,15 +363,15 @@ const calculateNewStock = (updateValue) => {
                       <button
                         onClick={() => updateStock(glass)}
                         disabled={
-                          updateLoading[glass.glass_id] ||
-                          !stockUpdates[glass.glass_id] ||
-                          stockUpdates[glass.glass_id] === '' ||
-                          stockUpdates[glass.glass_id] === '+' ||
-                          stockUpdates[glass.glass_id] === '-'
+                          updateLoading[glass.data_code] ||
+                          !stockUpdates[glass.data_code] ||
+                          stockUpdates[glass.data_code] === '' ||
+                          stockUpdates[glass.data_code] === '+' ||
+                          stockUpdates[glass.data_code] === '-'
                         }
                         className="px-4 py-2 bg-orange-600 text-white rounded-md hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-orange-500 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 whitespace-nowrap"
                       >
-                        {updateLoading[glass.glass_id] ? (
+                        {updateLoading[glass.data_code] ? (
                           <>
                             <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
                             Updating...
@@ -378,4 +412,7 @@ const calculateNewStock = (updateValue) => {
   );
 };
 
-export default AddGlassStock;
+ export default AddGlassStock;
+
+
+

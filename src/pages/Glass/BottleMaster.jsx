@@ -7,16 +7,14 @@ import AddGlassProductMaster from './components/AddGlassProductMaster';
 import EditGlassMaster from './components/EditGlassMaster';
 
 const ModernGlassProductDashboard = ({ allProducts, loading,
-  error, filterLoading }) => {
+  error, setAllProducts, filterLoading }) => {
   const [showFilters, setShowFilters] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
   const [openDropdown, setOpenDropdown] = useState(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
-
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(50);
-
   const [filters, setFilters] = useState({
     search: '',
     categories: [],
@@ -28,8 +26,6 @@ const ModernGlassProductDashboard = ({ allProducts, loading,
     dataCodes: [],
     stock_status: 'all'
   });
-
-
 
   const filterOptions = useMemo(() => {
     const getUniqueOptions = (field) => {
@@ -57,7 +53,7 @@ const ModernGlassProductDashboard = ({ allProducts, loading,
     return {
       categories: getUniqueOptions('category'),
       shapes: getUniqueOptions('shape'),
-      types: getUniqueOptions('type'), 
+      types: getUniqueOptions('type'),
       capacities: getUniqueOptions('capacity'),
       neckDiameters: getUniqueOptions('neck_diameter'),
       weights: getUniqueOptions('weight'),

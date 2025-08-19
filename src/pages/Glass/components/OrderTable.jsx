@@ -1,5 +1,6 @@
 import React from 'react';
 import { Package, Edit, Eye, EyeOff } from 'lucide-react';
+import { useInventoryCalculations } from '../../../hooks/InventoryHandles';
 
 const OrderTable = ({
   currentOrders,
@@ -15,11 +16,8 @@ const OrderTable = ({
   handleDispatch,
   formatStatusLabel,
   getAvailableStock,
-  
-
 }) => {
-
-
+  const { getCalculatedInventoryUsed, getCalculatedQuantityProduced } = useInventoryCalculations();
 
   if (currentOrders.length === 0) {
     return (
@@ -95,6 +93,10 @@ const OrderTable = ({
 
                   const remainingQty = glass ? getRemainingQty(glass) : "N/A";
                   const status = glass ? glass.status : "N/A";
+                  
+                  // Calculate correct values from tracking
+                  const calculatedInventoryUsed = glass ? getCalculatedInventoryUsed(glass) : 0;
+                  const calculatedQuantityProduced = glass ? getCalculatedQuantityProduced(glass) : 0;
 
                   return (
                     <div
@@ -212,12 +214,14 @@ const OrderTable = ({
                         {glass ? getAvailableStock(glass) : 0}
                       </div>
 
-                      <div className="text-center text-gray-800">
-                        0
+                      {/* Updated Inventory Used - calculated from tracking */}
+                      <div className="text-center text-gray-800 font-semibold">
+                        {calculatedInventoryUsed}
                       </div>
 
-                      <div className="text-center text-gray-800">
-                        {glass?.completed_qty ?? 0}
+                      {/* Updated Produced - calculated from tracking */}
+                      <div className="text-center text-gray-800 font-semibold">
+                        {calculatedQuantityProduced}
                       </div>
 
                       <div className="text-center">
@@ -232,7 +236,6 @@ const OrderTable = ({
                           <Edit size={12} className="text-transparent" />
                         )}
                       </div>
-
 
                       {orderType === 'completed' && isFirstRowOfItem && (
                         <div className="text-center">
@@ -296,6 +299,10 @@ const OrderTable = ({
                         const status = glass.status;
                         const rowId = `${order.order_number}-${item.item_name}-${glass.name}`;
                         const isExpanded = expandedRows.has(rowId);
+                        
+                        // Calculate values from tracking for mobile view
+                        const calculatedInventoryUsed = getCalculatedInventoryUsed(glass);
+                        const calculatedQuantityProduced = getCalculatedQuantityProduced(glass);
 
                         return (
                           <div
@@ -385,9 +392,19 @@ const OrderTable = ({
                                   <span className="text-gray-500">Available Stock:</span>{" "}
                                   {glass ? getAvailableStock(glass) : 0}
                                 </div>
+                                {/* Updated with calculated value */}
                                 <div>
                                   <span className="text-gray-500">Inventory Used:</span>{" "}
-                                  {glass.inventory_used ?? "N/A"}
+                                  <span className="font-semibold text-blue-600">
+                                    {calculatedInventoryUsed}
+                                  </span>
+                                </div>
+                                {/* Updated with calculated value */}
+                                <div>
+                                  <span className="text-gray-500">Quantity Produced:</span>{" "}
+                                  <span className="font-semibold text-green-600">
+                                    {calculatedQuantityProduced}
+                                  </span>
                                 </div>
                                 <div>
                                   <span className="text-gray-500">Data Code:</span>{" "}
@@ -431,5 +448,6 @@ const OrderTable = ({
     </div>
   );
 };
+
 
 export default OrderTable;

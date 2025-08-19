@@ -1,20 +1,21 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Plus, Minus, Package, X, Check } from 'lucide-react';
+import { Dialog, DialogBackdrop, DialogPanel, DialogTitle } from '@headlessui/react';
+import { Search, Plus, Minus, Package, X, Check, TrendingUp, Calculator } from 'lucide-react';
 
-const AddGlassStock = ({ initialSearchTerm = "", glassDetails, onClose }) => {
+const AddGlassStock = ({ isOpen, onClose, initialSearchTerm = "", glassDetails }) => {
   const [searchTerm, setSearchTerm] = useState(initialSearchTerm);
   const [glassMasterData, setGlassMasterData] = useState([]);
   const [filteredGlasses, setFilteredGlasses] = useState([]);
   const [updateLoading, setUpdateLoading] = useState({});
   const [stockUpdates, setStockUpdates] = useState({});
   const [successMessages, setSuccessMessages] = useState({});
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     const loadGlassMasterData = () => {
       try {
         const data = JSON.parse(localStorage.getItem("glassMaster")) || [];
         setGlassMasterData(data);
-        console.log('Glass master data loaded:', data);
       } catch (error) {
         console.error('Error loading glass master data:', error);
         setGlassMasterData([]);
@@ -55,15 +56,34 @@ const AddGlassStock = ({ initialSearchTerm = "", glassDetails, onClose }) => {
     setFilteredGlasses(filtered);
   }, [glassDetails, glassMasterData, searchTerm]);
 
+
+  const SearchSection = () => (
+    !glassDetails && (
+      <div className="p-6 bg-gradient-to-br from-orange-50 to-white border-b border-orange-100">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-orange-400 w-5 h-5" />
+          <input
+            type="text"
+            placeholder="Search by glass name or data code..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full pl-10 pr-4 py-3 border-2 border-orange-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-orange-500/20 focus:border-orange-500 text-gray-900 placeholder-orange-400"
+          />
+        </div>
+      </div>
+    )
+  );
+
   const handleStockChange = (dataCode, value) => {
     const cleanValue = value.replace(/[^+\-0-9]/g, '');
     setStockUpdates(prev => ({
       ...prev,
       [dataCode]: cleanValue
     }));
+    // Clear any previous error when user starts typing
+    if (error) setError(null);
   };
 
-  // Calculate new stock value for frontend display and localStorage update
   const calculateNewStock = (currentStock, updateValue) => {
     if (!updateValue || updateValue === '') {
       return currentStock || 0;
@@ -71,29 +91,26 @@ const AddGlassStock = ({ initialSearchTerm = "", glassDetails, onClose }) => {
 
     const cleanValue = updateValue.toString().trim();
     const currentStockNum = Number(currentStock) || 0;
-    
-    // Handle absolute values (no + or - prefix)
+
     if (!cleanValue.startsWith('+') && !cleanValue.startsWith('-')) {
       const parsed = parseInt(cleanValue, 10);
       return isNaN(parsed) ? currentStockNum : parsed;
     }
-    
-    // Handle adjustments (+ or - prefix)
+
     if (cleanValue.startsWith('+')) {
       const adjustment = parseInt(cleanValue.substring(1), 10);
       if (isNaN(adjustment)) return currentStockNum;
       return Math.max(0, currentStockNum + adjustment);
     }
-    
+
     if (cleanValue.startsWith('-')) {
       const adjustment = parseInt(cleanValue.substring(1), 10);
       if (isNaN(adjustment)) return currentStockNum;
       return Math.max(0, currentStockNum - adjustment);
     }
-    
+
     return currentStockNum;
   };
-
 
   const calculateAdjustment = (currentStock, updateValue) => {
     if (!updateValue || updateValue === '') {
@@ -102,24 +119,52 @@ const AddGlassStock = ({ initialSearchTerm = "", glassDetails, onClose }) => {
 
     const cleanValue = updateValue.toString().trim();
     const currentStockNum = Number(currentStock) || 0;
-    
+
     if (!cleanValue.startsWith('+') && !cleanValue.startsWith('-')) {
       const parsed = parseInt(cleanValue, 10);
       if (isNaN(parsed)) return 0;
-      return parsed - currentStockNum; 
+      return parsed - currentStockNum;
     }
-    
+
     if (cleanValue.startsWith('+')) {
       const adjustment = parseInt(cleanValue.substring(1), 10);
       return isNaN(adjustment) ? 0 : adjustment;
     }
-    
+
     if (cleanValue.startsWith('-')) {
       const adjustment = parseInt(cleanValue.substring(1), 10);
       return isNaN(adjustment) ? 0 : -adjustment;
     }
-    
+
     return 0;
+  };
+
+  const ProgressBar = ({ current, preview, total = 1000 }) => {
+    const currentProgress = Math.min((current / total) * 100, 100);
+    const previewProgress = Math.min((preview / total) * 100, 100);
+    const addedProgress = Math.max(0, previewProgress - currentProgress);
+
+    return (
+      <div className="w-full flex items-center space-x-2">
+        <div className="flex-1 p-[1px] rounded-full bg-gradient-to-r from-orange-800 via-orange-600 to-orange-500">
+          <div className="bg-white rounded-full h-3 sm:h-4 px-1 flex items-center overflow-hidden">
+            <div
+              className="bg-orange-600 h-1.5 sm:h-2.5 rounded-full transition-all duration-300"
+              style={{ width: `${currentProgress}%` }}
+            />
+            {addedProgress > 0 && (
+              <div
+                className="bg-green-500 h-1.5 sm:h-2.5 rounded-full transition-all duration-300 -ml-1"
+                style={{ width: `${addedProgress}%` }}
+              />
+            )}
+          </div>
+        </div>
+        <span className="text-xs sm:text-sm font-semibold text-orange-800 whitespace-nowrap">
+          {previewProgress.toFixed(0)}%
+        </span>
+      </div>
+    );
   };
 
   const updateStock = async (glass) => {
@@ -141,7 +186,7 @@ const AddGlassStock = ({ initialSearchTerm = "", glassDetails, onClose }) => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          adjustment: adjustment 
+          adjustment: adjustment
         })
       });
 
@@ -157,7 +202,7 @@ const AddGlassStock = ({ initialSearchTerm = "", glassDetails, onClose }) => {
           ? { ...g, available_stock: newStock }
           : g
       );
-      
+
       setGlassMasterData(updatedData);
       localStorage.setItem("glassMaster", JSON.stringify(updatedData));
       window.dispatchEvent(new StorageEvent('storage', {
@@ -166,11 +211,11 @@ const AddGlassStock = ({ initialSearchTerm = "", glassDetails, onClose }) => {
         newValue: JSON.stringify(updatedData),
         storageArea: localStorage
       }));
-      
+
       window.dispatchEvent(new CustomEvent('glassMasterUpdated', {
         detail: { updatedData, dataCode: glass.data_code, newStock }
       }));
-      
+
       console.log('AddGlassStock: Updated localStorage and dispatched events for', glass.data_code);
 
       setStockUpdates(prev => {
@@ -204,7 +249,6 @@ const AddGlassStock = ({ initialSearchTerm = "", glassDetails, onClose }) => {
     }
   };
 
-  // Preview calculation for display
   const getPreviewStock = (glass) => {
     const updateValue = stockUpdates[glass.data_code];
     if (!updateValue || updateValue === '' || updateValue === '+' || updateValue === '-') {
@@ -213,206 +257,382 @@ const AddGlassStock = ({ initialSearchTerm = "", glassDetails, onClose }) => {
     return calculateNewStock(glass.available_stock, updateValue);
   };
 
+  const getAdjustmentDisplay = (glass) => {
+    const updateValue = stockUpdates[glass.data_code];
+    if (!updateValue || updateValue === '' || updateValue === '+' || updateValue === '-') {
+      return null;
+    }
+
+    const adjustment = calculateAdjustment(glass.available_stock, updateValue);
+    const isPositive = adjustment > 0;
+    const isAbsolute = !updateValue.startsWith('+') && !updateValue.startsWith('-');
+
+    return {
+      adjustment,
+      isPositive,
+      isAbsolute,
+      color: isPositive ? 'text-emerald-600' : 'text-red-500'
+    };
+  };
+
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg w-full max-w-4xl max-h-[90vh] overflow-hidden">
-        <div className="flex items-center justify-between p-6 border-b border-gray-200">
-          <div className="flex items-center gap-3">
-            <Package className="w-6 h-6 text-orange-600" />
-            <h2 className="text-xl font-semibold text-gray-900">Update Glass Stock</h2>
-          </div>
-          {onClose && (
-            <button
-              onClick={onClose}
-              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-            >
-              <X className="w-5 h-5 text-gray-500" />
-            </button>
-          )}
-        </div>
+    <Dialog open={isOpen} onClose={onClose} className="relative z-50">
+      <DialogBackdrop className="fixed inset-0 bg-gray-500/75 transition-opacity" />
+      <div className="fixed inset-0 overflow-y-auto">
+        <div className="flex min-h-full items-center justify-center p-2 sm:p-4">
+          <DialogPanel className="w-full max-w-sm sm:max-w-4xl lg:max-w-7xl transform overflow-hidden rounded-lg bg-white shadow-xl transition-all">
 
-        {!glassDetails && (
-          <div className="p-6 border-b border-gray-200">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
-              <input
-                type="text"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Search glass by name or data code..."
-                className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
-              />
+            {/* Header */}
+            <div className="bg-orange-600 text-white px-3 sm:px-4 py-3 flex justify-between items-start gap-4 rounded-t-lg">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-white/20 rounded-xl backdrop-blur-sm">
+                    <Package className="w-6 h-6 sm:w-8 sm:h-8" />
+                  </div>
+                  <div>
+                    <DialogTitle as="h2" className="text-lg sm:text-xl font-bold">
+                      Stock Management
+                    </DialogTitle>
+                    {glassDetails && (
+                      <p className="text-orange-100 text-xs sm:text-sm mt-1 truncate">
+                        {glassDetails.name} • {glassDetails.capacity}ml
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={onClose}
+                className="text-white hover:bg-white hover:bg-opacity-20 p-1 sm:p-2 rounded-full transition-colors flex-shrink-0"
+              >
+                <X size={20} className="sm:w-6 sm:h-6" />
+              </button>
             </div>
 
-            <div className="mt-4 text-sm text-gray-600 bg-blue-50 p-3 rounded-lg">
-              <p><strong>Usage:</strong></p>
-              <ul className="list-disc list-inside mt-1 space-y-1">
-                <li><code>+50</code> - Add 50 to current stock</li>
-                <li><code>-20</code> - Subtract 20 from current stock</li>
-                <li><code>100</code> - Set stock to exactly 100</li>
-              </ul>
-            </div>
-          </div>
-        )}
+            {/* Search Section */}
+            <SearchSection />
 
-        {glassDetails && (
-          <div className="p-6 border-b border-gray-200 bg-blue-50">
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">Glass Details</h3>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-              <div>
-                <span className="text-gray-500">Name:</span>
-                <p className="font-medium">{glassDetails.name}</p>
+            {/* Glass Details Section */}
+            {glassDetails && (
+              <div className="p-3 sm:p-6 bg-gradient-to-br from-orange-50 to-white border-b border-orange-100">
+                <div className="bg-white rounded-xl p-3 sm:p-5 border border-orange-200 shadow-sm">
+                  <h3 className="text-sm sm:text-lg font-bold text-orange-900 mb-3 sm:mb-4 flex items-center gap-2">
+                    <Package className="w-4 h-4 sm:w-5 sm:h-5" />
+                    Product Specifications
+                  </h3>
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+                    {[
+                      { label: 'Name', value: glassDetails.name },
+                      { label: 'Capacity', value: `${glassDetails.capacity}ml` },
+                      { label: 'Weight', value: `${glassDetails.weight}g` },
+                      { label: 'Neck Diameter', value: `${glassDetails.neck_diameter}mm` }
+                    ].map(({ label, value }) => (
+                      <div key={label} className="p-2 sm:p-3 bg-orange-50 rounded-lg border border-orange-100">
+                        <span className="text-xs font-medium text-orange-600 uppercase tracking-wide">{label}</span>
+                        <p className="font-semibold text-orange-900 mt-1 text-sm sm:text-base">{value}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               </div>
-              <div>
-                <span className="text-gray-500">Capacity:</span>
-                <p className="font-medium">{glassDetails.capacity}</p>
-              </div>
-              <div>
-                <span className="text-gray-500">Weight:</span>
-                <p className="font-medium">{glassDetails.weight}</p>
-              </div>
-              <div>
-                <span className="text-gray-500">Neck Diameter:</span>
-                <p className="font-medium">{glassDetails.neck_diameter}</p>
-              </div>
-            </div>
-          </div>
-        )}
+            )}
 
-        {/* Results */}
-        <div className="flex-1 overflow-y-auto max-h-96">
-          {!glassDetails && !searchTerm.trim() ? (
-            <div className="p-8 text-center text-gray-500">
-              <Package className="w-12 h-12 mx-auto mb-4 text-gray-300" />
-              <p>Enter a glass name or data code to search</p>
+            {/* Error/Success Messages */}
+            {(error || Object.keys(successMessages).length > 0) && (
+              <div className="px-3 sm:px-6 py-2 sm:py-4 border-b">
+                {error && (
+                  <div className="bg-red-100 border border-red-400 text-red-700 px-3 sm:px-4 py-2 sm:py-3 rounded text-sm">
+                    {error}
+                  </div>
+                )}
+                {Object.entries(successMessages).map(([dataCode, message]) => (
+                  <div key={dataCode} className="bg-green-100 border border-green-400 text-green-700 px-3 sm:px-4 py-2 sm:py-3 rounded text-sm mb-2 last:mb-0">
+                    {message}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Desktop Table Header */}
+            <div className="hidden lg:block bg-gradient-to-r from-orange-800 via-orange-600 to-orange-400 px-4 py-3 mt-4 mx-4 rounded-md">
+              <div className="grid gap-4 text-white font-semibold text-sm items-center"
+                style={{
+                  gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr 2fr 1.5fr'
+                }}>
+                <div className="text-left">Glass Details</div>
+                <div className="text-center">Capacity</div>
+                <div className="text-center">Weight</div>
+                <div className="text-center">Neck Ø</div>
+                <div className="text-center">Current Stock</div>
+                <div className="text-center">Stock Progress</div>
+                <div className="text-center">Update Stock</div>
+              </div>
             </div>
-          ) : filteredGlasses.length === 0 ? (
-            <div className="p-8 text-center text-gray-500">
-              <Package className="w-12 h-12 mx-auto mb-4 text-gray-300" />
-              <p>No glasses found matching the criteria</p>
-              {glassDetails && (
-                <div className="mt-4 text-sm text-red-600">
-                  <p>Looking for: {glassDetails.name}</p>
-                  <p>Capacity: {glassDetails.capacity}, Weight: {glassDetails.weight}, Neck Diameter: {glassDetails.neck_diameter}</p>
+
+            {/* Results */}
+            <div className="max-h-[50vh] sm:max-h-96 overflow-y-auto p-3 sm:p-6">
+              {!glassDetails && !searchTerm.trim() ? (
+                <div className="flex flex-col items-center justify-center py-16 text-center">
+                  <div className="p-6 bg-orange-100 rounded-full mb-6">
+                    <Package className="w-16 h-16 text-orange-400" />
+                  </div>
+                  <h3 className="text-xl font-semibold text-gray-700 mb-2">Start Your Search</h3>
+                  <p className="text-gray-500">Enter a glass name or data code to begin managing stock</p>
+                </div>
+              ) : filteredGlasses.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-16 text-center">
+                  <div className="p-6 bg-gray-100 rounded-full mb-6">
+                    <Package className="w-16 h-16 text-gray-400" />
+                  </div>
+                  <h3 className="text-xl font-semibold text-gray-700 mb-2">No Results Found</h3>
+                  <p className="text-gray-500 mb-4">No glasses match your search criteria</p>
+                  {glassDetails && (
+                    <div className="p-4 bg-red-50 rounded-lg border border-red-200 text-left">
+                      <p className="text-sm text-red-700 font-medium">Searching for:</p>
+                      <p className="text-red-600">
+                        {glassDetails.name} • {glassDetails.capacity}ml • {glassDetails.weight}g • {glassDetails.neck_diameter}mm
+                      </p>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {filteredGlasses.map((glass, index) => {
+                    const adjustmentInfo = getAdjustmentDisplay(glass);
+                    const previewStock = getPreviewStock(glass);
+                    const currentStock = glass.available_stock || 0;
+                    const colorClasses = ['bg-orange-50', 'bg-orange-100', 'bg-yellow-50', 'bg-yellow-100'];
+                    const bgColor = colorClasses[index % colorClasses.length];
+
+                    return (
+                      <div key={glass.data_code} className="mb-4 last:mb-0">
+                        {/* Desktop Layout */}
+                        <div className={`hidden lg:block border-b border-orange-100 px-6 py-4 ${bgColor} -mx-6`}>
+                          <div className="grid gap-4 text-sm items-center"
+                            style={{
+                              gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr 2fr 1.5fr'
+                            }}>
+
+                            {/* Glass Details */}
+                            <div className="text-left">
+                              <div className="font-semibold text-orange-900 text-lg">{glass.name}</div>
+                              <div className="text-xs text-orange-600 font-medium">#{glass.data_code}</div>
+                              {successMessages[glass.data_code] && (
+                                <div className="flex items-center gap-2 mt-2 text-emerald-600 text-sm bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200">
+                                  <Check className="w-4 h-4" />
+                                  Updated
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Specifications */}
+                            <div className="text-center text-orange-900">
+                              {glass.capacity || 'N/A'}ml
+                            </div>
+                            <div className="text-center text-orange-900">
+                              {glass.weight || 'N/A'}g
+                            </div>
+                            <div className="text-center text-orange-900">
+                              {glass.neck_diameter || 'N/A'}mm
+                            </div>
+
+                            {/* Current Stock */}
+                            <div className="text-center">
+                              <span className="font-bold text-orange-900 text-lg">{currentStock}</span>
+                            </div>
+
+                            {/* Progress Bar */}
+                            <div className="px-2">
+                              <ProgressBar
+                                current={currentStock}
+                                preview={previewStock}
+                                total={1000}
+                              />
+                              <div className="text-xs text-gray-500 mt-1 text-center">
+                                Current: {currentStock} | Preview: {previewStock}
+                              </div>
+                              {adjustmentInfo && (
+                                <div className="text-xs mt-1 text-center">
+                                  <span className={`font-medium ${adjustmentInfo.color}`}>
+                                    {adjustmentInfo.isAbsolute ? 'Set to' : 'Adjust'}:
+                                    {adjustmentInfo.isAbsolute ? ` ${Math.abs(adjustmentInfo.adjustment)}` :
+                                      ` ${adjustmentInfo.adjustment > 0 ? '+' : ''}${adjustmentInfo.adjustment}`}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Update Controls */}
+                            <div className="px-2">
+                              <div className="space-y-2">
+                                <input
+                                  type="text"
+                                  value={stockUpdates[glass.data_code] || ''}
+                                  onChange={(e) => handleStockChange(glass.data_code, e.target.value)}
+                                  placeholder="±50 or 100"
+                                  className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent text-center font-mono"
+                                  disabled={updateLoading[glass.data_code]}
+                                />
+                                <button
+                                  onClick={() => updateStock(glass)}
+                                  disabled={
+                                    updateLoading[glass.data_code] ||
+                                    !stockUpdates[glass.data_code] ||
+                                    stockUpdates[glass.data_code] === '' ||
+                                    stockUpdates[glass.data_code] === '+' ||
+                                    stockUpdates[glass.data_code] === '-'
+                                  }
+                                  className="w-full inline-flex items-center justify-center px-3 py-1 text-sm font-medium text-white bg-orange-600 border border-transparent rounded hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-orange-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                >
+                                  {updateLoading[glass.data_code] ? (
+                                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                  ) : (
+                                    <>
+                                      <Check className="w-4 h-4 mr-1" />
+                                      Update
+                                    </>
+                                  )}
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Mobile Layout */}
+                        <div className={`lg:hidden ${bgColor} rounded-lg p-3 sm:p-4`}>
+                          <div className="space-y-3">
+                            {/* Header */}
+                            <div className="border-b border-gray-200 pb-3">
+                              <div className="flex justify-between items-start">
+                                <div>
+                                  <h4 className="font-semibold text-orange-900 text-sm sm:text-base">{glass.name}</h4>
+                                  <p className="text-xs text-orange-600 font-medium mt-1">#{glass.data_code}</p>
+                                </div>
+                                {successMessages[glass.data_code] && (
+                                  <div className="flex items-center gap-2 text-emerald-600 text-sm bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200">
+                                    <Check className="w-4 h-4" />
+                                    Updated
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Specifications */}
+                            <div className="grid grid-cols-3 gap-3 text-xs sm:text-sm">
+                              <div className="text-center p-3 bg-gray-50 rounded-lg">
+                                <div className="text-xs text-gray-500 font-medium uppercase">Capacity</div>
+                                <div className="text-sm font-semibold text-gray-900 mt-1">{glass.capacity || 'N/A'}ml</div>
+                              </div>
+                              <div className="text-center p-3 bg-gray-50 rounded-lg">
+                                <div className="text-xs text-gray-500 font-medium uppercase">Weight</div>
+                                <div className="text-sm font-semibold text-gray-900 mt-1">{glass.weight || 'N/A'}g</div>
+                              </div>
+                              <div className="text-center p-3 bg-gray-50 rounded-lg">
+                                <div className="text-xs text-gray-500 font-medium uppercase">Neck Ø</div>
+                                <div className="text-sm font-semibold text-gray-900 mt-1">{glass.neck_diameter || 'N/A'}mm</div>
+                              </div>
+                            </div>
+
+                            {/* Stock Information */}
+                            <div className="bg-gradient-to-r from-orange-50 to-orange-100 rounded-lg p-4 border border-orange-200">
+                              <div className="flex justify-between items-center mb-3">
+                                <span className="text-sm font-medium text-orange-700">Current Stock</span>
+                                <span className="text-xl font-bold text-orange-900">{currentStock}</span>
+                              </div>
+
+                              <div>
+                                <div className="flex justify-between items-center mb-2">
+                                  <span className="text-xs text-gray-600">Stock Progress:</span>
+                                  <span className="text-xs text-gray-500">
+                                    Current: {currentStock} | Preview: {previewStock}
+                                  </span>
+                                </div>
+                                <ProgressBar
+                                  current={currentStock}
+                                  preview={previewStock}
+                                  total={1000}
+                                />
+                              </div>
+
+                              {adjustmentInfo && (
+                                <div className="mt-3 pt-3 border-t border-orange-300">
+                                  <div className="flex justify-between items-center">
+                                    <span className="text-sm font-medium text-gray-600">
+                                      {adjustmentInfo.isAbsolute ? 'Setting to' : 'Adjustment'}
+                                    </span>
+                                    <span className={`text-sm font-bold ${adjustmentInfo.color}`}>
+                                      {adjustmentInfo.isAbsolute ? Math.abs(adjustmentInfo.adjustment) :
+                                        `${adjustmentInfo.adjustment > 0 ? '+' : ''}${adjustmentInfo.adjustment}`}
+                                    </span>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Update Controls */}
+                            <div className="space-y-3 pt-2 border-t border-gray-200">
+                              <div>
+                                <label className="block text-xs text-gray-700 mb-1">Stock Update:</label>
+                                <input
+                                  type="text"
+                                  value={stockUpdates[glass.data_code] || ''}
+                                  onChange={(e) => handleStockChange(glass.data_code, e.target.value)}
+                                  placeholder="Enter: +50, -20, or 100"
+                                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent text-center font-mono"
+                                  disabled={updateLoading[glass.data_code]}
+                                />
+                              </div>
+                              <button
+                                onClick={() => updateStock(glass)}
+                                disabled={
+                                  updateLoading[glass.data_code] ||
+                                  !stockUpdates[glass.data_code] ||
+                                  stockUpdates[glass.data_code] === '' ||
+                                  stockUpdates[glass.data_code] === '+' ||
+                                  stockUpdates[glass.data_code] === '-'
+                                }
+                                className="w-full flex items-center justify-center gap-3 px-6 py-3 bg-gradient-to-r from-orange-600 to-orange-500 text-white rounded-lg hover:from-orange-700 hover:to-orange-600 focus:outline-none focus:ring-4 focus:ring-orange-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 font-semibold"
+                              >
+                                {updateLoading[glass.data_code] ? (
+                                  <>
+                                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                    Updating...
+                                  </>
+                                ) : (
+                                  <>
+                                    <Check className="w-5 h-5" />
+                                    Update Stock
+                                  </>
+                                )}
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
-          ) : (
-            <div className="p-6 space-y-4">
-              {filteredGlasses.map((glass) => (
-                <div
-                  key={glass.data_code}
-                  className="border border-gray-200 rounded-lg p-4 hover:bg-gray-50 transition-colors"
-                >
-                  <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-                    {/* Glass Info */}
-                    <div className="flex-1">
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <h3 className="font-semibold text-gray-900">
-                            {glass.name}
-                          </h3>
-                          <p className="text-sm text-gray-600 mt-1">Code: {glass.data_code}</p>
-                        </div>
-                        {successMessages[glass.data_code] && (
-                          <div className="flex items-center gap-1 text-green-600 text-sm bg-green-50 px-2 py-1 rounded">
-                            <Check className="w-4 h-4" />
-                            {successMessages[glass.data_code]}
-                          </div>
-                        )}
-                      </div>
 
-                      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-3 text-sm">
-                        <div>
-                          <span className="text-gray-500">Capacity:</span>
-                          <p className="font-medium">{glass.capacity || 'N/A'}</p>
-                        </div>
-                        <div>
-                          <span className="text-gray-500">Weight:</span>
-                          <p className="font-medium">{glass.weight || 'N/A'}</p>
-                        </div>
-                        <div>
-                          <span className="text-gray-500">Neck Diameter:</span>
-                          <p className="font-medium">{glass.neck_diameter || 'N/A'}</p>
-                        </div>
-                        <div>
-                          <span className="text-gray-500">Current Stock:</span>
-                          <p className="font-medium text-blue-600">{glass.available_stock || 0}</p>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Stock Update */}
-                    <div className="flex items-center gap-3 lg:min-w-0 lg:w-80">
-                      <div className="flex-1">
-                        <input
-                          type="text"
-                          value={stockUpdates[glass.data_code] || ''}
-                          onChange={(e) => handleStockChange(glass.data_code, e.target.value)}
-                          placeholder="e.g. +50, -20, or 100"
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500 text-center"
-                          disabled={updateLoading[glass.data_code]}
-                        />
-                        {stockUpdates[glass.data_code] && (
-                          <p className="text-xs text-gray-500 mt-1 text-center">
-                            New stock: {getPreviewStock(glass)}
-                          </p>
-                        )}
-                      </div>
-
-                      <button
-                        onClick={() => updateStock(glass)}
-                        disabled={
-                          updateLoading[glass.data_code] ||
-                          !stockUpdates[glass.data_code] ||
-                          stockUpdates[glass.data_code] === '' ||
-                          stockUpdates[glass.data_code] === '+' ||
-                          stockUpdates[glass.data_code] === '-'
-                        }
-                        className="px-4 py-2 bg-orange-600 text-white rounded-md hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-orange-500 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 whitespace-nowrap"
-                      >
-                        {updateLoading[glass.data_code] ? (
-                          <>
-                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                            Updating...
-                          </>
-                        ) : (
-                          <>
-                            <Check className="w-4 h-4" />
-                            Update
-                          </>
-                        )}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Footer */}
-        <div className="p-6 border-t border-gray-200 bg-gray-50">
-          <div className="flex justify-between items-center">
-            <p className="text-sm text-gray-600">
-              {filteredGlasses.length} glass(es) found
-            </p>
-            {onClose && (
+            {/* Footer */}
+            <div className="bg-gray-50 px-3 sm:px-6 py-3 sm:py-4 flex flex-col sm:flex-row justify-between items-center border-t space-y-2 sm:space-y-0">
+              <div className="flex items-center gap-2 text-sm text-gray-600">
+                <Package className="w-4 h-4" />
+                <span className="font-medium">{filteredGlasses.length} item{filteredGlasses.length !== 1 ? 's' : ''} found</span>
+              </div>
               <button
                 onClick={onClose}
-                className="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors"
+                className="w-full sm:w-auto px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-orange-500"
               >
                 Close
               </button>
-            )}
-          </div>
+            </div>
+          </DialogPanel>
         </div>
       </div>
-    </div>
+    </Dialog>
   );
 };
 
- export default AddGlassStock;
-
-
-
+export default AddGlassStock;

@@ -15,6 +15,7 @@ const GlassOrders = ({ orderType = 'in_progress', glassMasterReady = false }) =>
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [ordersLoaded, setOrdersLoaded] = useState(false);
+  const [trackingUpdateTrigger, setTrackingUpdateTrigger] = useState(0);
 
   // UI state
   const [currentPage, setCurrentPage] = useState(1);
@@ -64,51 +65,34 @@ const GlassOrders = ({ orderType = 'in_progress', glassMasterReady = false }) =>
     return Math.max(0, remaining);
   }, []);
 
-  // Load glass master data from localStorage (populated by dashboard)
   const loadGlassMasterData = useCallback(() => {
     try {
-      console.log('GlassOrders: loadGlassMasterData called, glassMasterReady:', glassMasterReady);
-
       if (!glassMasterReady) {
-        console.log('GlassOrders: Glass master not ready yet');
         return [];
       }
-
       const glassMasterStr = localStorage.getItem("glassMaster");
-
       if (glassMasterStr && glassMasterStr !== 'undefined' && glassMasterStr !== 'null') {
         const glassMaster = JSON.parse(glassMasterStr);
-        console.log('GlassOrders: loadGlassMasterData - loaded', glassMaster.length, 'items');
-
         setGlassMasterData(glassMaster);
         return glassMaster;
       }
-
-      console.log('GlassOrders: No valid glassMaster data found in localStorage');
       setGlassMasterData([]);
       return [];
     } catch (error) {
-      console.error('Error loading glass master data:', error);
       setGlassMasterData([]);
       return [];
     }
   }, [glassMasterReady]);
 
-  // Create lookup map only when glass master data is available
   const glassLookupMap = useMemo(() => {
     if (!glassMasterReady || glassMasterData.length === 0) {
-      console.log('GlassOrders: glassMasterData not ready yet, returning empty map');
       return new Map();
     }
-
-    console.log('GlassOrders: Creating glassLookupMap with', glassMasterData.length, 'items');
     const map = new Map();
-
     glassMasterData.forEach(glass => {
       const key = `${glass.name?.toLowerCase()}_${glass.capacity}_${glass.weight}_${glass.neck_diameter}`;
       const stock = glass.available_stock ?? 0;
       map.set(key, stock);
-      console.log(`GlassOrders: Added to lookup map - ${key}: ${stock}`);
     });
 
     return map;
@@ -123,10 +107,8 @@ const GlassOrders = ({ orderType = 'in_progress', glassMasterReady = false }) =>
     return stock;
   }, [glassLookupMap, glassMasterReady, glassMasterData.length]);
 
-  // Initialize orders data only after glass master is loaded
   const initializeOrderData = useCallback(async () => {
     try {
-      console.log('GlassOrders: initializeOrderData called');
       setOrdersLoaded(false);
 
       let currentOrders = [];
@@ -135,7 +117,6 @@ const GlassOrders = ({ orderType = 'in_progress', glassMasterReady = false }) =>
       const dispatchedData = getLocalStorageData(STORAGE_KEYS.DISPATCHED);
 
       if (inProgressData && readyToDispatchData && dispatchedData) {
-        // Use cached data
         if (orderType === "in_progress") {
           currentOrders = inProgressData;
         } else if (orderType === "ready_to_dispatch") {
@@ -144,7 +125,6 @@ const GlassOrders = ({ orderType = 'in_progress', glassMasterReady = false }) =>
           currentOrders = dispatchedData;
         }
       } else {
-        // Initialize from API
         const initialized = await initializeLocalStorage(TEAM, FilterGlassOrders);
 
         if (orderType === "in_progress") {
@@ -155,8 +135,6 @@ const GlassOrders = ({ orderType = 'in_progress', glassMasterReady = false }) =>
           currentOrders = initialized.dispatchedOrders || [];
         }
       }
-
-      console.log('GlassOrders: Setting orders with', currentOrders.length, 'items');
       setOrders(currentOrders);
       setOrdersLoaded(true);
     } catch (err) {
@@ -166,14 +144,37 @@ const GlassOrders = ({ orderType = 'in_progress', glassMasterReady = false }) =>
     }
   }, [orderType, STORAGE_KEYS, TEAM, FilterGlassOrders]);
 
-  // Only compute aggregation when both data sources are ready
+  useEffect(() => {
+  const handleTrackingUpdate = () => {
+    // Force refresh of orders to get updated tracking data
+    setOrdersLoaded(false);
+    setTimeout(() => {
+      initializeOrderData();
+    }, 100);
+  };
+
+  // Listen for tracking updates
+  window.addEventListener('trackingDataUpdated', handleTrackingUpdate);
+  
+  // Listen for localStorage changes
+  const handleStorageChange = (e) => {
+    if (e.key && e.key.includes('glass')) {
+      handleTrackingUpdate();
+    }
+  };
+  
+  window.addEventListener('storage', handleStorageChange);
+
+  return () => {
+    window.removeEventListener('trackingDataUpdated', handleTrackingUpdate);
+    window.removeEventListener('storage', handleStorageChange);
+  };
+}, [initializeOrderData]);
+
   const aggregatedglasss = useMemo(() => {
     if (!isDataReady || orders.length === 0) {
-      console.log('GlassOrders: Data not ready yet, returning empty aggregation');
       return {};
     }
-
-    console.log('GlassOrders: Computing aggregatedglasss with', orders.length, 'orders and glassMaster loaded');
     const glassMap = {};
 
     orders.forEach(order => {
@@ -185,8 +186,6 @@ const GlassOrders = ({ orderType = 'in_progress', glassMasterReady = false }) =>
           if (key) {
             if (!glassMap[key]) {
               const availableStock = getAvailableStock(glass);
-              console.log(`GlassOrders: Creating aggregation for ${key} with stock ${availableStock}`);
-
               glassMap[key] = {
                 glass_name: glass.name,
                 total_quantity: 0,
@@ -226,7 +225,7 @@ const GlassOrders = ({ orderType = 'in_progress', glassMasterReady = false }) =>
 
     return orders
       .map(order => {
-        // Check if order-level fields match
+
         if (
           order.order_number?.toLowerCase().includes(searchLower) ||
           order.customer_name?.toLowerCase().includes(searchLower) ||
@@ -267,7 +266,6 @@ const GlassOrders = ({ orderType = 'in_progress', glassMasterReady = false }) =>
 
   const totalPages = Math.ceil(filteredOrders.length / ordersPerPage);
 
-  // Helper functions
   const getStatusStyle = useCallback((status) => {
     if (!status) return 'text-gray-500';
 
@@ -295,28 +293,23 @@ const GlassOrders = ({ orderType = 'in_progress', glassMasterReady = false }) =>
       .replace(/\b\w/g, (c) => c.toUpperCase());
   }, []);
 
-  // Initialize data when glass master becomes ready
   useEffect(() => {
     let isMounted = true;
 
     const initialize = async () => {
-      console.log('GlassOrders: useEffect triggered - glassMasterReady:', glassMasterReady, 'ordersLoaded:', ordersLoaded);
-
+    
       if (glassMasterReady && isMounted && !ordersLoaded) {
         try {
-          console.log('GlassOrders: Glass master ready, starting initialization');
+      
           setLoading(true);
           setError(null);
 
-          // Load glass master data
           const glassMaster = loadGlassMasterData();
 
-          // Only proceed if we have glass master data
           if (glassMaster.length > 0) {
-            // Load orders
             await initializeOrderData();
           } else {
-            console.log('GlassOrders: No glass master data available');
+            
             setOrdersLoaded(true);
           }
         } catch (error) {
@@ -330,7 +323,7 @@ const GlassOrders = ({ orderType = 'in_progress', glassMasterReady = false }) =>
           }
         }
       } else if (!glassMasterReady && isMounted) {
-        console.log('GlassOrders: Glass master not ready, resetting states');
+  
         setLoading(true);
         setOrdersLoaded(false);
         setGlassMasterData([]);
@@ -345,16 +338,15 @@ const GlassOrders = ({ orderType = 'in_progress', glassMasterReady = false }) =>
     };
   }, [glassMasterReady, ordersLoaded]);
 
-  // Reset orders loaded state when orderType changes
   useEffect(() => {
     if (glassMasterReady && ordersLoaded) {
-      console.log('GlassOrders: Order type changed, resetting ordersLoaded');
+    
       setOrdersLoaded(false);
       setOrders([]);
     }
   }, [orderType]);
 
-  // Storage monitoring effect
+
   useEffect(() => {
     const checkForUpdates = () => {
       try {
@@ -380,13 +372,6 @@ const GlassOrders = ({ orderType = 'in_progress', glassMasterReady = false }) =>
           if (currentItem && newItem &&
             currentItem.data_code === newItem.data_code &&
             currentItem.available_stock !== newItem.available_stock) {
-
-            console.log('GlassOrders: Stock change detected for searched item:',
-              newItem.name || newItem.data_code,
-              'from', currentItem.available_stock,
-              'to', newItem.available_stock
-            );
-
             setGlassMasterData(currentData);
           }
         }
@@ -397,7 +382,6 @@ const GlassOrders = ({ orderType = 'in_progress', glassMasterReady = false }) =>
 
     const handleStorageEvent = (e) => {
       if (e.key === 'glassMaster' && glassMasterReady) {
-        console.log('GlassOrders: Storage event received, checking for updates');
         setTimeout(() => {
           loadGlassMasterData();
         }, 100);
@@ -406,7 +390,6 @@ const GlassOrders = ({ orderType = 'in_progress', glassMasterReady = false }) =>
 
     const handleGlassMasterUpdate = (e) => {
       if (glassMasterReady && e.detail?.data) {
-        console.log('GlassOrders: Custom glassMasterUpdated event received');
         setGlassMasterData(e.detail.data);
       }
     };
@@ -437,7 +420,6 @@ const GlassOrders = ({ orderType = 'in_progress', glassMasterReady = false }) =>
     setTimeout(() => {
       try {
         loadGlassMasterData();
-        console.log('GlassOrders: handleCloseAddStock - refreshed glassMaster data');
       } catch (error) {
         console.error('Error refreshing glass master data:', error);
       }
@@ -513,49 +495,94 @@ const GlassOrders = ({ orderType = 'in_progress', glassMasterReady = false }) =>
     setCurrentPage(1);
   }, []);
 
-  const handleLocalOrderUpdate = useCallback((updatedOrder) => {
-    const wasCompleted = isOrderCompleted(
-      orders.find(o => o.order_number === updatedOrder.order_number)
-    );
-    const isNowCompleted = isOrderCompleted(updatedOrder);
+  const handleLocalOrderUpdate = useCallback(
+  (orderNumber, updatedComponent) => {
+    console.log("🔄 handleLocalComponentUpdate triggered");
+    console.log("📦 Order Number:", orderNumber);
+    console.log("🧩 Updated Component:", updatedComponent);
 
-    if (wasCompleted !== isNowCompleted) {
-      if (isNowCompleted) {
-        console.log(`Order ${updatedOrder.order_number} completed - moving to completed storage`);
-        moveOrderInStorage(TEAM, updatedOrder.order_number, 'pending', 'completed');
-        updateOrderInStorage(TEAM, updatedOrder, 'completed');
-        if (orderType === 'pending') {
-          setOrders(prev => prev.filter(order =>
-            order.order_number !== updatedOrder.order_number
-          ));
-        }
-      } else {
-        console.log(`Order ${updatedOrder.order_number} moved back to pending`);
-        moveOrderInStorage(TEAM, updatedOrder.order_number, 'completed', 'pending');
-        updateOrderInStorage(TEAM, updatedOrder, 'pending');
-        if (orderType === 'completed') {
-          setOrders(prev => prev.filter(order =>
-            order.order_number !== updatedOrder.order_number
-          ));
-        }
+    const newStatus = updatedComponent?.status;
+    if (!newStatus) {
+      console.warn("⚠️ Updated component has no status!");
+      return;
+    }
+    console.log("🔹 New Status:", newStatus);
+
+    // 1️⃣ Find current status bucket of this order
+    const statusBuckets = ["IN_PROGRESS", "READY_TO_DISPATCH", "DISPATCHED"];
+    let currentStatus = null;
+    let orderFromStorage = null;
+
+    for (const status of statusBuckets) {
+      const key = getStorageKeys(TEAM)[status];
+      const ordersInBucket = getLocalStorageData(key) || [];
+      const found = ordersInBucket.find(o => o.order_number === orderNumber);
+      if (found) {
+        currentStatus = status;
+        orderFromStorage = found;
+        break;
+      }
+    }
+
+    if (!orderFromStorage) {
+      console.warn(`⚠️ Order ${orderNumber} not found in any bucket`);
+      return;
+    }
+
+    console.log("📋 Current bucket:", currentStatus);
+
+    // 2️⃣ Rebuild the order with updated component inside the correct item
+    const updatedOrder = {
+      ...orderFromStorage,
+      items: orderFromStorage.items.map(item => ({
+        ...item,
+        components: item.components.map(c =>
+          c._id === updatedComponent._id ? updatedComponent : c
+        ),
+      })),
+    };
+
+    // 3️⃣ If status changed → move order
+    if (currentStatus !== newStatus) {
+      console.log(
+        `🔀 Order ${orderNumber} moved from ${currentStatus} → ${newStatus}`
+      );
+
+      moveOrderInStorage(TEAM, orderNumber, currentStatus, newStatus);
+      updateOrderInStorage(TEAM, updatedOrder, newStatus);
+
+      if (orderType === currentStatus) {
+        setOrders(prev =>
+          prev.filter(order => order.order_number !== orderNumber)
+        );
       }
     } else {
-      const currentStatus = isNowCompleted ? 'completed' : 'pending';
+      // 4️⃣ If status didn’t change → just update order in place
+      console.log(`🔄 Order ${orderNumber} stays in ${currentStatus} bucket`);
+
       updateOrderInStorage(TEAM, updatedOrder, currentStatus);
+
       setOrders(prev =>
         prev.map(order =>
-          order.order_number === updatedOrder.order_number ? updatedOrder : order
+          order.order_number === orderNumber ? updatedOrder : order
         )
       );
     }
+    window.dispatchEvent(new CustomEvent('trackingDataUpdated', {
+    detail: { order: updatedOrder }
+  }));
+
+    console.log("❌ Closing dialog...");
     handleClose();
-  }, [orders, isOrderCompleted, TEAM, orderType, handleClose]);
+  },
+  [TEAM, orderType, setOrders, handleClose]
+);
+
 
   const handleDispatch = useCallback((order, item, component) => {
     console.log(order, item, component, TEAM);
   }, [TEAM]);
 
-  // Show loading state while waiting for glass master or loading data
   if (!glassMasterReady) {
     return (
       <div className="flex items-center justify-center py-16">
@@ -578,7 +605,6 @@ const GlassOrders = ({ orderType = 'in_progress', glassMasterReady = false }) =>
     );
   }
 
-  // Render error state
   if (error) {
     return (
       <div className="flex flex-col items-center justify-center py-16 px-4">
@@ -640,7 +666,7 @@ const GlassOrders = ({ orderType = 'in_progress', glassMasterReady = false }) =>
         handleStockYes={handleStockYes}
         getRemainingQty={getRemainingQty}
         setStockQuantities={setStockQuantities}
-        getAvailableStock={getAvailableStock} 
+        getAvailableStock={getAvailableStock}
       />
 
       {showModal && selectedOrder && selectedItem && (
@@ -659,6 +685,7 @@ const GlassOrders = ({ orderType = 'in_progress', glassMasterReady = false }) =>
 
       {showAddStockModal && (
         <AddGlassStock
+          isOpen={showAddStockModal}
           initialGlassDetails={addStockGlassDetails}
           onClose={handleCloseAddStock}
           glassDetails={addStockGlassDetails}

@@ -61,6 +61,61 @@ const ModernGlassProductDashboard = ({ allProducts, loading,
     };
   }, [allProducts]);
 
+  useEffect(() => {
+  // Listen for glass master updates from UpdateBottleQty component
+  const handleGlassMasterUpdate = (event) => {
+    const { updatedData, dataCode, newStock } = event.detail;
+    
+    // Update the allProducts state with new stock values
+    setAllProducts(prevProducts => 
+      prevProducts.map(product => {
+        if (product.data_code === dataCode) {
+          return {
+            ...product,
+            available_stock: newStock
+          };
+        }
+        return product;
+      })
+    );
+  };
+
+  // Listen for storage events (fallback)
+  const handleStorageChange = (event) => {
+    if (event.key === 'glassMaster') {
+      try {
+        const updatedGlassData = JSON.parse(event.newValue || '[]');
+        
+        // Update allProducts with new stock values from localStorage
+        setAllProducts(prevProducts => 
+          prevProducts.map(product => {
+            const glassItem = updatedGlassData.find(glass => glass.data_code === product.data_code);
+            if (glassItem) {
+              return {
+                ...product,
+                available_stock: glassItem.available_stock
+              };
+            }
+            return product;
+          })
+        );
+      } catch (error) {
+        console.error('Error parsing updated glass master data:', error);
+      }
+    }
+  };
+
+  // Add event listeners
+  window.addEventListener('glassMasterUpdated', handleGlassMasterUpdate);
+  window.addEventListener('storage', handleStorageChange);
+
+  // Cleanup event listeners on unmount
+  return () => {
+    window.removeEventListener('glassMasterUpdated', handleGlassMasterUpdate);
+    window.removeEventListener('storage', handleStorageChange);
+  };
+}, [])
+
 
   const filteredProducts = useMemo(() => {
     return allProducts.filter(product => {

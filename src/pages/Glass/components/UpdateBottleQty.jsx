@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Dialog, DialogBackdrop, DialogPanel, DialogTitle } from '@headlessui/react';
 import { X, Save, CloudHail } from 'lucide-react';
-import axios from 'axios';
+
 
 const UpdateBottleQty = ({ isOpen, onClose, orderData, itemData, stockQuantities = {}, onUpdate }) => {
   const [assignments, setAssignments] = useState([]);
@@ -11,7 +11,6 @@ const UpdateBottleQty = ({ isOpen, onClose, orderData, itemData, stockQuantities
 
   useEffect(() => {
     if (isOpen && itemData?.components) {
-      // Filter for bottle components similar to pump filtering
       const bottleAssignments = itemData.components
         .filter(component => component.component_type === "glass")
         .map(bottle => {
@@ -49,7 +48,7 @@ const UpdateBottleQty = ({ isOpen, onClose, orderData, itemData, stockQuantities
 
   const calculateProgress = (bottle) => {
     const completed = bottle.completed_qty || 0;
-    const total = bottle.qty || 0; 
+    const total = bottle.qty || 0;
     return total > 0 ? Math.min((completed / total) * 100, 100) : 0;
   };
 
@@ -90,100 +89,160 @@ const UpdateBottleQty = ({ isOpen, onClose, orderData, itemData, stockQuantities
 
   const getRemainingQty = (bottle) => {
     const completed = bottle.completed_qty || 0;
-    const total = bottle.qty || 0; // Changed from quantity to qty
+    const total = bottle.qty || 0;
     return Math.max(total - completed, 0);
   };
 
-  const handleSave = async () => {
+  const updateLocalStorageGlassMaster = (dataCode, stockAdjustment) => {
     try {
-      setLoading(true);
-      setError(null);
+      const glassMasterData = JSON.parse(localStorage.getItem("glassMaster")) || [];
+      const updatedData = glassMasterData.map(glass => {
+        if (glass.data_code === dataCode) {
+          const currentStock = glass.available_stock || 0;
+          const newStock = Math.max(0, currentStock + stockAdjustment);
+          return { ...glass, available_stock: newStock };
+        }
+        return glass;
+      });
 
-      const updates = assignments
-        .filter(assignment => assignment.todayQty > 0)
-        .map(assignment => {
-          const currentCompleted = assignment.completed_qty || 0;
-          const stockUsed = stockQuantities[assignment.component_id] || 0;
-          const newProduction = Math.max(0, assignment.todayQty - stockUsed);
-          const newCompleted = currentCompleted + assignment.todayQty;
+      localStorage.setItem("glassMaster", JSON.stringify(updatedData));
 
-          return {
-            component_id: assignment.component_id, // Added component_id like deco_no in original
-            quantity_produced: newProduction,
-            stock_used: stockUsed,
-            total_completed: newCompleted,
-            new_inventory_used: (assignment.inventory_used || 0) + stockUsed,
-            newStatus: newCompleted >= assignment.qty ? 'Completed' : 'In Progress', // Changed quantity to qty
-            notes: assignment.notes || '',
-            date: new Date().toISOString()
-          };
-        });
+      window.dispatchEvent(new StorageEvent('storage', {
+        key: 'glassMaster',
+        oldValue: JSON.stringify(glassMasterData),
+        newValue: JSON.stringify(updatedData),
+        storageArea: localStorage
+      }));
 
-      if (updates.length === 0) {
-        setError('Please enter quantity for at least one bottle');
+      window.dispatchEvent(new CustomEvent('glassMasterUpdated', {
+        detail: {
+          updatedData,
+          dataCode,
+          newStock: updatedData.find(g => g.data_code === dataCode)?.available_stock
+        }
+      }));
+
+    } catch (error) {
+      console.error('Error updating localStorage glass master:', error);
+    }
+  };
+
+  const handleSave = async () => {
+  try {
+    setLoading(true);
+    setError(null);
+
+    const updates = assignments
+      .filter(assignment => assignment.todayQty > 0)
+      .map(assignment => {
+        const currentCompleted = assignment.completed_qty || 0;
+        const stockUsed = stockQuantities[assignment.component_id] || 0;
+        const newProduction = Math.max(0, assignment.todayQty - stockUsed);
+        const newCompleted = currentCompleted + assignment.todayQty;
+
+        return {
+          component_data_code: assignment.data_code,
+          component_id: assignment.component_id,
+          quantity_produced: newProduction,
+          stock_used: stockUsed,
+          total_completed: newCompleted,
+          notes: assignment.notes || '',
+          date: new Date().toISOString()
+        };
+      });
+
+    if (updates.length === 0) {
+      setError('Please enter quantity for at least one Glass');
+      setLoading(false);
+      return;
+    }
+
+    for (let assignment of assignments) {
+      const remaining = getRemainingQty(assignment);
+      if (assignment.todayQty > remaining) {
+        setError(`Quantity for ${assignment.name} exceeds remaining amount (${remaining})`);
         setLoading(false);
         return;
       }
+    }
 
-      for (let i = 0; i < updates.length; i++) {
-        const assignment = assignments[i];
-        const remaining = getRemainingQty(assignment);
+    for (let update of updates) {
+      // Debug logging for API calls
+      console.log('Making API call with data_code:', update.component_data_code);
 
-        if (assignment.todayQty > remaining) {
-          setError(`Quantity for ${assignment.name} exceeds remaining amount (${remaining})`); // Changed bottle_name to name
-          setLoading(false);
-          return;
-        }
-      }
-
-      // Using fetch like in pump component instead of axios
-      const result = await fetch(
-        "https://pragati-dummy-server.onrender.com/api/bottles/update-progress",
+      const glassResult = await fetch(
+        `https://doms-k1fi.onrender.com/api/masters/glass/production/${encodeURIComponent(orderData.order_number)}/${itemData?.item_id}/${update.component_id}`,
         {
           method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-          },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            orderNumber: orderData.order_number,
-            itemId: itemData._id,
-            updates,
+            date: update.date || new Date().toISOString(),
+            quantity_produced: update.quantity_produced,
+            stock_used: update.stock_used,
+            total_completed: update.total_completed,
+            notes: update.notes
           }),
         }
       );
 
-      if (!result.ok) {
-        throw new Error(`HTTP error! status: ${result.status}`);
+      if (!glassResult.ok) {
+        throw new Error(`HTTP error! status: ${glassResult.status}`);
       }
 
-      const response = await result.json();
-
-      if (response.data.success) {
-        const updatedOrder = response.data.data.order;
-        setSuccessMessage('Quantities updated successfully!');
-
-        setTimeout(() => {
-          onUpdate?.(updatedOrder);
-          onClose();
-        }, 1500);
-      } else {
-        throw new Error(response.data.message || 'Update failed');
-      }
-    } catch (err) {
-      console.error('Error updating quantities:', err);
-      let errorMessage = 'Failed to update quantities';
-
-      if (err.response?.data?.message) {
-        errorMessage = err.response.data.message;
-      } else if (err.message) {
-        errorMessage = err.message;
+      const glassResponse = await glassResult.json();
+      if (!glassResponse.success) {
+        throw new Error(glassResponse.message || 'Glass update failed');
       }
 
-      setError(errorMessage);
-    } finally {
-      setLoading(false);
+      if (update.stock_used > 0) {
+        const adjustmentValue = -(update.stock_used);
+
+        console.log('Stock adjustment API call for data_code:', update.component_data_code);
+
+        const stockAdjustResult = await fetch(
+          `https://doms-k1fi.onrender.com/api/masters/glass/stock/adjust/${update.component_data_code}`,
+          {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ adjustment: Number(adjustmentValue) }),
+          }
+        );
+
+        if (!stockAdjustResult.ok) {
+          throw new Error(`Stock adjust failed: ${stockAdjustResult.status}`);
+        }
+
+        const stockAdjustResponse = await stockAdjustResult.json();
+        if (!stockAdjustResponse.success) {
+          throw new Error(stockAdjustResponse.message || 'Stock adjustment failed');
+        }
+
+        // Update localStorage glass master data after successful API call
+        updateLocalStorageGlassMaster(update.component_data_code, adjustmentValue);
+      }
     }
-  };
+
+    window.dispatchEvent(new CustomEvent('trackingDataUpdated', {
+      detail: { 
+        order: orderData,  
+        updates: updates,  
+        timestamp: new Date().toISOString()
+      }
+    }));
+
+    setSuccessMessage('Glass quantities updated successfully!');
+    setTimeout(() => {
+      onUpdate?.(orderData); 
+      onClose();
+    }, 1500);
+
+  } catch (err) {
+    console.error('Error updating glass quantities:', err);
+    setError(err.message || 'Failed to update glass quantities');
+  } finally {
+    setLoading(false);
+  }
+};
 
   return (
     <Dialog open={isOpen} onClose={onClose}>
@@ -250,6 +309,11 @@ const UpdateBottleQty = ({ isOpen, onClose, orderData, itemData, stockQuantities
 
                 return (
                   <div key={assignment.component_id} className="mb-4 last:mb-0">
+                    {/* Debug info - remove in production */}
+                    <div className="text-xs text-gray-500 mb-2 p-2 bg-gray-100 rounded">
+                      Debug: data_code = {assignment.data_code}, component_id = {assignment.component_id}
+                    </div>
+
                     <div className={`hidden lg:block border-b border-orange-100 px-6 py-4 ${bgColor} -mx-6`}>
                       <div className="grid gap-4 text-sm items-center"
                         style={{

@@ -12,7 +12,7 @@ const StockAvailabilityDialog = ({
   handleStockYes,
   getRemainingQty,
   setStockQuantities,
-  getAvailableStock, // New prop to get stock from master data
+  getAvailableStock,  
 }) => {
   if (!showStockDialog || !selectedItem) return null;
 
@@ -35,11 +35,10 @@ const StockAvailabilityDialog = ({
     qty !== '' && parseInt(qty) > 0
   );
 
-  console.log('StockAvailabilityDialog rendered');
+  
 
   const renderComponentCard = (component, index, isCompleted = false) => {
     const remaining = getRemainingQty(component);
-    // Get available stock from master data using the new function
     const availableStock = getAvailableStock ? getAvailableStock(component) : 0;
     const maxStock = isCompleted ? 0 : Math.min(remaining, availableStock);
     

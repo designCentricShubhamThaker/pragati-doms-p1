@@ -8,7 +8,7 @@ import BottleMaster from './BottleMaster.jsx';
 import GlassOrders from './GlassOrders.jsx';
 
 const GlassDashboard = ({ isEmbedded = false }) => {
-  const [activeMenuItem, setActiveMenuItem] = useState('liveOrders');
+  const [activeMenuItem, setActiveMenuItem] = useState('ReadyToDispatch');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { currentDateTime, formatTime, formatTimeMobile } = useCurrentDateTime();
   const [allProducts, setAllProducts] = useState([]);
@@ -27,9 +27,9 @@ const GlassDashboard = ({ isEmbedded = false }) => {
         setAllProducts(result.data);
         console.log('Dashboard: Glass master data loaded');
         localStorage.setItem("glassMaster", JSON.stringify(result.data));
-        setGlassMasterReady(true); // Set ready after storing
+        setGlassMasterReady(true); 
         
-        // Dispatch event to notify other components
+
         window.dispatchEvent(new CustomEvent('glassMasterUpdated', {
           detail: { data: result.data }
         }));
@@ -54,7 +54,7 @@ const GlassDashboard = ({ isEmbedded = false }) => {
           try {
             const parsedData = JSON.parse(cachedData);
             setAllProducts(parsedData);
-            setGlassMasterReady(true); // Set ready immediately if cached data exists
+            setGlassMasterReady(true);
             console.log('Dashboard: Using cached glass master data');
           } catch {
             console.error("Error parsing cached glassMaster, fetching fresh data...");
@@ -93,9 +93,9 @@ const GlassDashboard = ({ isEmbedded = false }) => {
   const renderActiveComponent = () => {
     switch (activeMenuItem) {
       case 'liveOrders':
-        return <GlassOrders orderType='in_progress' glassMasterReady={glassMasterReady} />;
+        return <GlassOrders orderType='in_progress' glassMasterReady={glassMasterReady}  allProducts={allProducts} setAllProducts={setAllProducts}  />;
       case 'ReadyToDispatch':
-        return <GlassOrders orderType='ready_to_dispatch' glassMasterReady={glassMasterReady} />;
+        return <GlassOrders orderType='ready_to_dispatch' glassMasterReady={glassMasterReady} allProducts={allProducts} setAllProducts={setAllProducts} />;
       case 'BottleMaster':
         return <BottleMaster 
           allProducts={allProducts} 

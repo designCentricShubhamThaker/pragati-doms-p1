@@ -1,6 +1,8 @@
 import React from 'react';
 import { Package, Edit, Eye, EyeOff } from 'lucide-react';
-import { useInventoryCalculations } from '../../../hooks/InventoryHandles';
+import { FaTruckArrowRight } from "react-icons/fa6";
+import { FaTruckRampBox } from "react-icons/fa6";
+
 
 const OrderTable = ({
   currentOrders,
@@ -17,7 +19,11 @@ const OrderTable = ({
   formatStatusLabel,
   getAvailableStock,
 }) => {
-  const { getCalculatedInventoryUsed, getCalculatedQuantityProduced } = useInventoryCalculations();
+  function sumTrackingKey(tracking, key) {
+    return tracking.reduce((total, entry) => {
+      return total + (Number(entry[key]) || 0);
+    }, 0);
+  }
 
   if (currentOrders.length === 0) {
     return (
@@ -43,7 +49,7 @@ const OrderTable = ({
     <div className="space-y-4">
       <div className="hidden xl:block">
         <div className="bg-gradient-to-r from-orange-800 via-orange-600 to-orange-400 rounded-lg shadow-md py-3 px-4 mb-3">
-          <div className={`grid ${orderType === 'completed' ? 'grid-cols-22' : 'grid-cols-21'} gap-1 text-white font-semibold text-xs items-center`}>
+          <div className={`grid ${orderType === 'ready_to_dispatch' ? 'grid-cols-23' : 'grid-cols-22'} gap-1 text-white font-semibold text-xs items-center`}>
             <div className="text-left col-span-2">Order #</div>
             <div className="text-left col-span-2">Manager</div>
             <div className="text-left col-span-2">Customer</div>
@@ -56,12 +62,12 @@ const OrderTable = ({
             <div className="text-left">Quantity</div>
             <div className="text-left">Remaining</div>
             <div className="text-left flex justify-center">Priority</div>
-            <div className="text-left flex justify-center">Status</div>
+            <div className="text-left flex justify-center col-span-2">Status</div>
             <div className="text-center">Inv Avl</div>
             <div className="text-center">Inv Used</div>
             <div className="text-center">Produced</div>
             <div className="text-center">Edit</div>
-            {orderType === 'completed' && (
+            {orderType === 'ready_to_dispatch' && (
               <div className="text-center">Dispatch</div>
             )}
           </div>
@@ -93,17 +99,14 @@ const OrderTable = ({
 
                   const remainingQty = glass ? getRemainingQty(glass) : "N/A";
                   const status = glass ? glass.status : "N/A";
+
                   
-                  // Calculate correct values from tracking
-                  const calculatedInventoryUsed = glass ? getCalculatedInventoryUsed(glass) : 0;
-                  const calculatedQuantityProduced = glass ? getCalculatedQuantityProduced(glass) : 0;
 
                   return (
                     <div
                       key={`${order.order_number}-${item.item_name}-${glass?.name || "empty"}-${glassIndex}`}
-                      className={`grid ${orderType === 'completed' ? 'grid-cols-22' : 'grid-cols-21'} gap-1 items-center py-2 px-3 text-xs ${bgColor}`}
+                      className={`grid ${orderType === 'ready_to_dispatch' ? 'grid-cols-23' : 'grid-cols-22'} gap-1 items-center py-2 px-3 text-xs ${bgColor}`}
                     >
-                      {/* Order number */}
                       <div className="text-left col-span-2">
                         {isFirstRowOfOrder ? (
                           <span className="font-bold text-orange-800">
@@ -114,7 +117,6 @@ const OrderTable = ({
                         )}
                       </div>
 
-                      {/* Manager */}
                       <div className="text-left col-span-2">
                         {isFirstRowOfOrder ? (
                           <button
@@ -204,7 +206,7 @@ const OrderTable = ({
                         </span>
                       </div>
 
-                      <div className="text-left flex justify-center">
+                      <div className="text-left flex justify-center col-span-2">
                         <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusStyle(status)}`}>
                           {formatStatusLabel(status)}
                         </span>
@@ -214,15 +216,13 @@ const OrderTable = ({
                         {glass ? getAvailableStock(glass) : 0}
                       </div>
 
-                      {/* Updated Inventory Used - calculated from tracking */}
-                      <div className="text-center text-gray-800 font-semibold">
-                        {calculatedInventoryUsed}
+                      <div className="text-center text-red-900 font-semibold">
+                        {sumTrackingKey(glass?.tracking, "stock_used")}
+                      </div>
+                      <div className="text-center text-red-900 font-semibold">
+                        {sumTrackingKey(glass?.tracking, "quantity_produced")}
                       </div>
 
-                      {/* Updated Produced - calculated from tracking */}
-                      <div className="text-center text-gray-800 font-semibold">
-                        {calculatedQuantityProduced}
-                      </div>
 
                       <div className="text-center">
                         {isFirstRowOfItem && glass ? (
@@ -237,14 +237,14 @@ const OrderTable = ({
                         )}
                       </div>
 
-                      {orderType === 'completed' && isFirstRowOfItem && (
+                      {orderType === 'ready_to_dispatch' && isFirstRowOfItem && (
                         <div className="text-center">
                           <button
                             onClick={() => handleDispatch(order, item, glass)}
-                            className="px-2 py-1 bg-orange-600 text-white rounded hover:bg-orange-500"
+                            className="p-1.5 bg-orange-600 rounded text-white hover:bg-orange-500"
                           >
-                            Dispatch
-                          </button>
+                            <FaTruckRampBox   size={14} />
+                          </button >
                         </div>
                       )}
                     </div>
@@ -299,10 +299,7 @@ const OrderTable = ({
                         const status = glass.status;
                         const rowId = `${order.order_number}-${item.item_name}-${glass.name}`;
                         const isExpanded = expandedRows.has(rowId);
-                        
-                        // Calculate values from tracking for mobile view
-                        const calculatedInventoryUsed = getCalculatedInventoryUsed(glass);
-                        const calculatedQuantityProduced = getCalculatedQuantityProduced(glass);
+
 
                         return (
                           <div
@@ -396,14 +393,14 @@ const OrderTable = ({
                                 <div>
                                   <span className="text-gray-500">Inventory Used:</span>{" "}
                                   <span className="font-semibold text-blue-600">
-                                    {calculatedInventoryUsed}
+                                     {sumTrackingKey(glass?.tracking, "stock_used")}
                                   </span>
                                 </div>
                                 {/* Updated with calculated value */}
                                 <div>
                                   <span className="text-gray-500">Quantity Produced:</span>{" "}
                                   <span className="font-semibold text-green-600">
-                                    {calculatedQuantityProduced}
+                                    {sumTrackingKey(glass?.tracking, "stock_used")}
                                   </span>
                                 </div>
                                 <div>

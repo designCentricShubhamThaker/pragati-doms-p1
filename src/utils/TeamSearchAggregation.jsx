@@ -61,7 +61,6 @@ const TeamSearchAggregation = ({
     };
   }, []);
 
-  // Also reload when aggregatedItems changes (indicates data refresh)
   useEffect(() => {
     if (Object.keys(aggregatedItems).length > 0) {
       loadGlassMasterData();
@@ -70,14 +69,9 @@ const TeamSearchAggregation = ({
 
   const searchResults = useMemo(() => {
     if (!searchTerm.trim()) return [];
-
-    // console.log('TeamSearchAggregation: Computing search results with glassMaster count:', glassMasterData.length);
-
     return Object.entries(aggregatedItems)
       .map(([key, item]) => {
         const nameKey = `${teamType}_name`;
-
-        // Find matching glass from master data for current available stock
         const matchedGlass = glassMasterData.find(g =>
           g.name?.toLowerCase().trim() === item[nameKey]?.toLowerCase().trim() &&
           Number(g.capacity) === Number(item.capacity) &&
@@ -97,8 +91,6 @@ const TeamSearchAggregation = ({
       })
       .filter(([key, item]) => {
         const nameKey = `${teamType}_name`;
-
-        // Check if searchTerm is numeric
         if (!isNaN(searchTerm) && searchTerm.trim() !== "") {
           const numSearch = Number(searchTerm);
 
@@ -109,8 +101,6 @@ const TeamSearchAggregation = ({
             item.available_stock === numSearch
           );
         }
-
-        // String-based search (case-insensitive)
         const searchLower = searchTerm.toLowerCase();
 
         if (item[nameKey]?.toLowerCase().includes(searchLower)) return true;

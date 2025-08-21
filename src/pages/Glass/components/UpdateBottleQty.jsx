@@ -3,7 +3,7 @@ import { Dialog, DialogBackdrop, DialogPanel, DialogTitle } from '@headlessui/re
 import { X, Save, CloudHail } from 'lucide-react';
 
 
-const UpdateBottleQty = ({ isOpen, onClose, orderData, itemData, stockQuantities = {}, onUpdate }) => {
+const UpdateBottleQty = ({ isOpen, onClose, orderData, itemData, stockQuantities = {}, onStockUpdate }) => {
   const [assignments, setAssignments] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -127,122 +127,121 @@ const UpdateBottleQty = ({ isOpen, onClose, orderData, itemData, stockQuantities
     }
   };
 
+
   const handleSave = async () => {
-  try {
-    setLoading(true);
-    setError(null);
+    try {
+      setLoading(true);
+      setError(null);
 
-    const updates = assignments
-      .filter(assignment => assignment.todayQty > 0)
-      .map(assignment => {
-        const currentCompleted = assignment.completed_qty || 0;
-        const stockUsed = stockQuantities[assignment.component_id] || 0;
-        const newProduction = Math.max(0, assignment.todayQty - stockUsed);
-        const newCompleted = currentCompleted + assignment.todayQty;
+      const updates = assignments
+        .filter(assignment => assignment.todayQty > 0)
+        .map(assignment => {
+          const currentCompleted = assignment.completed_qty || 0;
+          const stockUsed = stockQuantities[assignment.component_id] || 0;
+          const newProduction = Math.max(0, assignment.todayQty - stockUsed);
+          const newCompleted = currentCompleted + assignment.todayQty;
 
-        return {
-          component_data_code: assignment.data_code,
-          component_id: assignment.component_id,
-          quantity_produced: newProduction,
-          stock_used: stockUsed,
-          total_completed: newCompleted,
-          notes: assignment.notes || '',
-          date: new Date().toISOString()
-        };
-      });
+          return {
+            component_data_code: assignment.data_code,
+            component_id: assignment.component_id,
+            quantity_produced: newProduction,
+            stock_used: stockUsed,
+            total_completed: newCompleted,
+            notes: assignment.notes || '',
+            date: new Date().toISOString()
+          };
+        });
 
-    if (updates.length === 0) {
-      setError('Please enter quantity for at least one Glass');
-      setLoading(false);
-      return;
-    }
-
-    for (let assignment of assignments) {
-      const remaining = getRemainingQty(assignment);
-      if (assignment.todayQty > remaining) {
-        setError(`Quantity for ${assignment.name} exceeds remaining amount (${remaining})`);
+      if (updates.length === 0) {
+        setError('Please enter quantity for at least one Glass');
         setLoading(false);
         return;
       }
-    }
 
-    for (let update of updates) {
-      // Debug logging for API calls
-      console.log('Making API call with data_code:', update.component_data_code);
-
-      const glassResult = await fetch(
-        `https://doms-k1fi.onrender.com/api/masters/glass/production/${encodeURIComponent(orderData.order_number)}/${itemData?.item_id}/${update.component_id}`,
-        {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            date: update.date || new Date().toISOString(),
-            quantity_produced: update.quantity_produced,
-            stock_used: update.stock_used,
-            total_completed: update.total_completed,
-            notes: update.notes
-          }),
+      for (let assignment of assignments) {
+        const remaining = getRemainingQty(assignment);
+        if (assignment.todayQty > remaining) {
+          setError(`Quantity for ${assignment.name} exceeds remaining amount (${remaining})`);
+          setLoading(false);
+          return;
         }
-      );
-
-      if (!glassResult.ok) {
-        throw new Error(`HTTP error! status: ${glassResult.status}`);
       }
 
-      const glassResponse = await glassResult.json();
-      if (!glassResponse.success) {
-        throw new Error(glassResponse.message || 'Glass update failed');
-      }
+      for (let update of updates) {
+        // Debug logging for API calls
+        console.log('Making API call with data_code:', update.component_data_code);
 
-      if (update.stock_used > 0) {
-        const adjustmentValue = -(update.stock_used);
-
-        console.log('Stock adjustment API call for data_code:', update.component_data_code);
-
-        const stockAdjustResult = await fetch(
-          `https://doms-k1fi.onrender.com/api/masters/glass/stock/adjust/${update.component_data_code}`,
+        const glassResult = await fetch(
+          `https://doms-k1fi.onrender.com/api/masters/glass/production/${encodeURIComponent(orderData.order_number)}/${itemData?.item_id}/${update.component_id}`,
           {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ adjustment: Number(adjustmentValue) }),
+            body: JSON.stringify({
+              date: update.date || new Date().toISOString(),
+              quantity_produced: update.quantity_produced,
+              stock_used: update.stock_used,
+              total_completed: update.total_completed,
+              notes: update.notes
+            }),
           }
         );
 
-        if (!stockAdjustResult.ok) {
-          throw new Error(`Stock adjust failed: ${stockAdjustResult.status}`);
+        if (!glassResult.ok) {
+          throw new Error(`HTTP error! status: ${glassResult.status}`);
         }
 
-        const stockAdjustResponse = await stockAdjustResult.json();
-        if (!stockAdjustResponse.success) {
-          throw new Error(stockAdjustResponse.message || 'Stock adjustment failed');
+        const glassResponse = await glassResult.json();
+        if (!glassResponse.success) {
+          throw new Error(glassResponse.message || 'Glass update failed');
         }
 
-        // Update localStorage glass master data after successful API call
-        updateLocalStorageGlassMaster(update.component_data_code, adjustmentValue);
+        if (update.stock_used > 0) {
+          const adjustmentValue = -(update.stock_used);
+
+          console.log('Stock adjustment API call for data_code:', update.component_data_code);
+
+          const stockAdjustResult = await fetch(
+            `https://doms-k1fi.onrender.com/api/masters/glass/stock/adjust/${update.component_data_code}`,
+            {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ adjustment: Number(adjustmentValue) }),
+            }
+          );
+
+          if (!stockAdjustResult.ok) {
+            throw new Error(`Stock adjust failed: ${stockAdjustResult.status}`);
+          }
+
+          const stockAdjustResponse = await stockAdjustResult.json();
+          if (!stockAdjustResponse.success) {
+            throw new Error(stockAdjustResponse.message || 'Stock adjustment failed');
+          }
+          updateLocalStorageGlassMaster(update.component_data_code, adjustmentValue);
+        }
       }
+
+      setSuccessMessage('Glass quantities updated successfully!');
+
+      setTimeout(() => {
+        // ✅ Get updated glass master data from localStorage and pass it to onStockUpdate
+        try {
+          const updatedGlassData = JSON.parse(localStorage.getItem("glassMaster") || "[]");
+          onStockUpdate?.(updatedGlassData); // Pass the updated products array
+        } catch (error) {
+          console.error('Error reading updated glass master data:', error);
+          onStockUpdate?.([]); // Fallback to empty array
+        }
+        onClose();
+      }, 1500);
+
+    } catch (err) {
+      console.error('Error updating glass quantities:', err);
+      setError(err.message || 'Failed to update glass quantities');
+    } finally {
+      setLoading(false);
     }
-
-    window.dispatchEvent(new CustomEvent('trackingDataUpdated', {
-      detail: { 
-        order: orderData,  
-        updates: updates,  
-        timestamp: new Date().toISOString()
-      }
-    }));
-
-    setSuccessMessage('Glass quantities updated successfully!');
-    setTimeout(() => {
-      onUpdate?.(orderData); 
-      onClose();
-    }, 1500);
-
-  } catch (err) {
-    console.error('Error updating glass quantities:', err);
-    setError(err.message || 'Failed to update glass quantities');
-  } finally {
-    setLoading(false);
-  }
-};
+  };
 
   return (
     <Dialog open={isOpen} onClose={onClose}>

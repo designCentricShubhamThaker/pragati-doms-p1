@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Dialog, DialogBackdrop, DialogPanel, DialogTitle } from '@headlessui/react';
 import { Search, Plus, Minus, Package, X, Check, TrendingUp, Calculator } from 'lucide-react';
 
-const AddGlassStock = ({ isOpen, onClose, initialSearchTerm = "", glassDetails }) => {
+const AddGlassStock = ({ isOpen, onClose, initialSearchTerm = "", glassDetails, onStockUpdate }) => {
   const [searchTerm, setSearchTerm] = useState(initialSearchTerm);
   const [glassMasterData, setGlassMasterData] = useState([]);
   const [filteredGlasses, setFilteredGlasses] = useState([]);
@@ -55,7 +55,6 @@ const AddGlassStock = ({ isOpen, onClose, initialSearchTerm = "", glassDetails }
 
     setFilteredGlasses(filtered);
   }, [glassDetails, glassMasterData, searchTerm]);
-
 
   const SearchSection = () => (
     !glassDetails && (
@@ -197,6 +196,7 @@ const AddGlassStock = ({ isOpen, onClose, initialSearchTerm = "", glassDetails }
       const result = await response.json();
       console.log('API response:', result);
 
+      // Update local state
       const updatedData = glassMasterData.map(g =>
         g.data_code === glass.data_code
           ? { ...g, available_stock: newStock }
@@ -204,19 +204,13 @@ const AddGlassStock = ({ isOpen, onClose, initialSearchTerm = "", glassDetails }
       );
 
       setGlassMasterData(updatedData);
+      
       localStorage.setItem("glassMaster", JSON.stringify(updatedData));
-      window.dispatchEvent(new StorageEvent('storage', {
-        key: 'glassMaster',
-        oldValue: JSON.stringify(glassMasterData),
-        newValue: JSON.stringify(updatedData),
-        storageArea: localStorage
-      }));
-
-      window.dispatchEvent(new CustomEvent('glassMasterUpdated', {
-        detail: { updatedData, dataCode: glass.data_code, newStock }
-      }));
-
-      console.log('AddGlassStock: Updated localStorage and dispatched events for', glass.data_code);
+      
+      if (onStockUpdate) {
+        console.log('AddGlassStock: Calling onStockUpdate with updated data');
+        onStockUpdate(updatedData);
+      }
 
       setStockUpdates(prev => {
         const newUpdates = { ...prev };

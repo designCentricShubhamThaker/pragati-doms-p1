@@ -1,88 +1,169 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Menu, ChevronLeft } from 'lucide-react';
 import { FaPowerOff } from "react-icons/fa";
 import SharedHeader from '../../components/SharedHeader.jsx';
-
 import { useCurrentDateTime } from '../../hooks/useCurrentDateTime.jsx';
 import BottleMaster from './BottleMaster.jsx';
 import GlassOrders from './GlassOrders.jsx';
 
 const GlassDashboard = ({ isEmbedded = false }) => {
-  const [activeMenuItem, setActiveMenuItem] = useState('ReadyToDispatch');
+  const [activeMenuItem, setActiveMenuItem] = useState('liveOrders');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { currentDateTime, formatTime, formatTimeMobile } = useCurrentDateTime();
-  const [allProducts, setAllProducts] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [filterLoading, setFilterLoading] = useState(false);
-  const [glassMasterReady, setGlassMasterReady] = useState(false); // Add this state
 
-  const fetchAllProducts = async () => {
+
+  const [globalState, setGlobalState] = useState({
+    allProducts: [],
+    orders: {
+      in_progress: [],
+      ready_to_dispatch: [],
+      dispatched: []
+    },
+    loading: false,
+    error: null,
+    glassMasterReady: false,
+    dataVersion: 0 
+  });
+
+
+  const fetchGlassMaster = useCallback(async () => {
     try {
-      setFilterLoading(true);
+      setGlobalState(prev => ({ ...prev, loading: true, error: null }));
+
       const response = await fetch("https://doms-k1fi.onrender.com/api/masters/glass/all");
       const result = await response.json();
 
       if (result.success) {
-        setAllProducts(result.data);
-        console.log('Dashboard: Glass master data loaded');
-        localStorage.setItem("glassMaster", JSON.stringify(result.data));
-        setGlassMasterReady(true); 
-        
-
-        window.dispatchEvent(new CustomEvent('glassMasterUpdated', {
-          detail: { data: result.data }
+        const newProducts = result.data;
+        localStorage.setItem("glassMaster", JSON.stringify(newProducts));
+        setGlobalState(prev => ({
+          ...prev,
+          allProducts: newProducts,
+          glassMasterReady: true,
+          loading: false,
+          dataVersion: prev.dataVersion + 1
         }));
+
+        console.log('Dashboard: Glass master data loaded');
       } else {
-        setError("Failed to fetch all products data");
+        throw new Error("Failed to fetch glass master data");
       }
     } catch (err) {
-      setError("Error connecting to API for all products");
-      console.error("API Error (all products):", err);
-    } finally {
-      setFilterLoading(false);
+      setGlobalState(prev => ({
+        ...prev,
+        error: err.message,
+        loading: false
+      }));
+      console.error("Glass Master API Error:", err);
     }
-  };
+  }, []);
+
 
   useEffect(() => {
     const initializeData = async () => {
-      try {
-        setLoading(true);
-        const cachedData = localStorage.getItem("glassMaster");
-        
-        if (cachedData && cachedData !== 'undefined' && cachedData !== 'null') {
-          try {
-            const parsedData = JSON.parse(cachedData);
-            setAllProducts(parsedData);
-            setGlassMasterReady(true);
-            console.log('Dashboard: Using cached glass master data');
-          } catch {
-            console.error("Error parsing cached glassMaster, fetching fresh data...");
-            await fetchAllProducts();
-          }
-        } else {
-          console.log('Dashboard: No cached data, fetching fresh glass master data');
-          await fetchAllProducts();
+      const cachedData = localStorage.getItem("glassMaster");
+
+      if (cachedData && cachedData !== 'undefined' && cachedData !== 'null') {
+        try {
+          const parsedData = JSON.parse(cachedData);
+          setGlobalState(prev => ({
+            ...prev,
+            allProducts: parsedData,
+            glassMasterReady: true
+          }));
+          console.log('Dashboard: Using cached glass master data');
+        } catch {
+          console.log('Dashboard: Invalid cached data, fetching fresh');
+          await fetchGlassMaster();
         }
-      } catch (err) {
-        setError("Failed to initialize data");
-      } finally {
-        setLoading(false);
+      } else {
+        console.log('Dashboard: No cached data, fetching fresh');
+        await fetchGlassMaster();
       }
     };
 
     initializeData();
+  }, [fetchGlassMaster]);
+
+
+  const handleOrderUpdate = useCallback((orderNumber, updatedComponent, newStatus) => {
+    setGlobalState(prev => {
+      const newOrders = { ...prev.orders };
+
+      Object.keys(newOrders).forEach(bucket => {
+        const orderIndex = newOrders[bucket].findIndex(
+          order => order.order_number === orderNumber
+        );
+
+        if (orderIndex !== -1) {
+          const updatedOrder = {
+            ...newOrders[bucket][orderIndex],
+            items: newOrders[bucket][orderIndex].items.map(item => ({
+              ...item,
+              components: item.components.map(c =>
+                c._id === updatedComponent._id ? updatedComponent : c
+              )
+            }))
+          };
+
+          if (newStatus && bucket !== newStatus) {
+            newOrders[bucket].splice(orderIndex, 1);
+            if (!newOrders[newStatus]) newOrders[newStatus] = [];
+            newOrders[newStatus].push(updatedOrder);
+          } else {
+            newOrders[bucket][orderIndex] = updatedOrder;
+          }
+        }
+      });
+
+      return {
+        ...prev,
+        orders: newOrders,
+        dataVersion: prev.dataVersion + 1
+      };
+    });
   }, []);
 
-  const handleLogout = () => {
+  const handleStockUpdate = useCallback((updatedProducts) => {
+    localStorage.setItem("glassMaster", JSON.stringify(updatedProducts));
+    setGlobalState(prev => ({
+      ...prev,
+      allProducts: updatedProducts,
+      dataVersion: prev.dataVersion + 1
+    }));
+
+    console.log('Dashboard: Stock updated and synced');
+  }, []);
+
+
+  const handleOrdersUpdate = useCallback((orderType, newOrders) => {
+    setGlobalState(prev => ({
+      ...prev,
+      orders: {
+        ...prev.orders,
+        [orderType]: newOrders
+      },
+      dataVersion: prev.dataVersion + 1
+    }));
+  }, []);
+
+  const handleLogout = useCallback(() => {
     console.log('Logout clicked');
     localStorage.clear();
-  };
+    setGlobalState({
+      allProducts: [],
+      orders: { in_progress: [], ready_to_dispatch: [], dispatched: [] },
+      loading: false,
+      error: null,
+      glassMasterReady: false,
+      dataVersion: 0
+    });
+  }, []);
 
-  const handleMenuClick = (itemId) => {
+  const handleMenuClick = useCallback((itemId) => {
     setActiveMenuItem(itemId);
     setMobileMenuOpen(false);
-  };
+  }, []);
 
   const mainMenuItems = [
     { id: 'liveOrders', label: 'Live Orders' },
@@ -91,21 +172,34 @@ const GlassDashboard = ({ isEmbedded = false }) => {
   ];
 
   const renderActiveComponent = () => {
+    const commonProps = {
+      globalState,
+      onOrderUpdate: handleOrderUpdate,
+      onStockUpdate: handleStockUpdate,
+      onOrdersUpdate: handleOrdersUpdate
+    };
+
     switch (activeMenuItem) {
       case 'liveOrders':
-        return <GlassOrders orderType='in_progress' glassMasterReady={glassMasterReady}  allProducts={allProducts} setAllProducts={setAllProducts}  />;
+        return <GlassOrders orderType='in_progress' {...commonProps} />;
       case 'ReadyToDispatch':
-        return <GlassOrders orderType='ready_to_dispatch' glassMasterReady={glassMasterReady} allProducts={allProducts} setAllProducts={setAllProducts} />;
+        return <GlassOrders orderType='ready_to_dispatch' {...commonProps} />;
       case 'BottleMaster':
-        return <BottleMaster 
-          allProducts={allProducts} 
-          setAllProducts={setAllProducts} 
-          loading={loading}
-          error={error} 
-          setFilterLoading={setFilterLoading} 
-          filterLoading={filterLoading} 
-          setGlassMasterReady={setGlassMasterReady}
-        />;
+        return (
+          <BottleMaster
+            allProducts={globalState.allProducts}
+            setAllProducts={(products) => handleStockUpdate(products)}
+            loading={globalState.loading}
+            error={globalState.error}
+            setFilterLoading={(loading) =>
+              setGlobalState(prev => ({ ...prev, loading }))
+            }
+            filterLoading={globalState.loading}
+            setGlassMasterReady={(ready) =>
+              setGlobalState(prev => ({ ...prev, glassMasterReady: ready }))
+            }
+          />
+        );
       default:
         return (
           <div className="p-4">
@@ -156,11 +250,10 @@ const GlassDashboard = ({ isEmbedded = false }) => {
                 <div key={item.id} className="mb-2">
                   <button
                     onClick={() => handleMenuClick(item.id)}
-                    className={`w-full flex items-center justify-between px-3 py-2 text-sm font-medium rounded-lg transition-all duration-200 ${
-                      activeMenuItem === item.id
+                    className={`w-full flex items-center justify-between px-3 py-2 text-sm font-medium rounded-lg transition-all duration-200 ${activeMenuItem === item.id
                         ? 'text-orange-600 bg-orange-50'
                         : 'text-gray-600 hover:text-orange-600 hover:bg-orange-50/50'
-                    }`}
+                      }`}
                   >
                     {item.label}
                   </button>
@@ -188,11 +281,10 @@ const GlassDashboard = ({ isEmbedded = false }) => {
               <div key={item.id} className="relative">
                 <button
                   onClick={() => handleMenuClick(item.id)}
-                  className={`flex items-center px-4 py-3 text-sm font-medium whitespace-nowrap transition-all duration-200 border-b-2 z-0 ${
-                    activeMenuItem === item.id
+                  className={`flex items-center px-4 py-3 text-sm font-medium whitespace-nowrap transition-all duration-200 border-b-2 z-0 ${activeMenuItem === item.id
                       ? 'text-orange-600 border-orange-500 bg-orange-50'
                       : 'text-gray-600 border-transparent hover:text-orange-600 hover:bg-orange-50/50'
-                  }`}
+                    }`}
                 >
                   {item.label}
                 </button>
@@ -201,6 +293,8 @@ const GlassDashboard = ({ isEmbedded = false }) => {
           </div>
         </div>
       </nav>
+
+
 
       <main>
         {renderActiveComponent()}

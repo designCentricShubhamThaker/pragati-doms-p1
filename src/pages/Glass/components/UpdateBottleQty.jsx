@@ -3,7 +3,7 @@ import { Dialog, DialogBackdrop, DialogPanel, DialogTitle } from '@headlessui/re
 import { X, Save, CloudHail } from 'lucide-react';
 
 
-const UpdateBottleQty = ({ isOpen, onClose, orderData, itemData, stockQuantities = {}, onStockUpdate }) => {
+const UpdateBottleQty = ({ isOpen, onClose, orderData, itemData, stockQuantities = {}, onUpdate, onStockUpdate }) => {
   const [assignments, setAssignments] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -39,6 +39,8 @@ const UpdateBottleQty = ({ isOpen, onClose, orderData, itemData, stockQuantities
     }
     setAssignments(newAssignments);
   };
+
+  
 
   const handleNotesChange = (assignmentIndex, value) => {
     const newAssignments = [...assignments];
@@ -128,6 +130,9 @@ const UpdateBottleQty = ({ isOpen, onClose, orderData, itemData, stockQuantities
   };
 
 
+
+
+
   const handleSave = async () => {
     try {
       setLoading(true);
@@ -181,7 +186,8 @@ const UpdateBottleQty = ({ isOpen, onClose, orderData, itemData, stockQuantities
               quantity_produced: update.quantity_produced,
               stock_used: update.stock_used,
               total_completed: update.total_completed,
-              notes: update.notes
+              notes: update.notes,
+              username:"bottle_team"
             }),
           }
         );
@@ -223,17 +229,21 @@ const UpdateBottleQty = ({ isOpen, onClose, orderData, itemData, stockQuantities
 
       setSuccessMessage('Glass quantities updated successfully!');
 
+      
+
       setTimeout(() => {
         // ✅ Get updated glass master data from localStorage and pass it to onStockUpdate
         try {
           const updatedGlassData = JSON.parse(localStorage.getItem("glassMaster") || "[]");
-          onStockUpdate?.(updatedGlassData); // Pass the updated products array
+          onStockUpdate?.(updatedGlassData); 
         } catch (error) {
           console.error('Error reading updated glass master data:', error);
-          onStockUpdate?.([]); // Fallback to empty array
+          onStockUpdate?.([]); 
         }
         onClose();
       }, 1500);
+
+      
 
     } catch (err) {
       console.error('Error updating glass quantities:', err);

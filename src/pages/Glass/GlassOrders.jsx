@@ -9,12 +9,12 @@ import AddGlassStock from './components/AddGlassStock.jsx';
 import Pagination from '../../utils/Pagination.jsx';
 import AddVehicleDetails from './components/AddVehicleDetails.jsx';
 
-const GlassOrders = ({ 
-  orderType = 'in_progress', 
-  globalState, 
-  onOrderUpdate, 
-  onStockUpdate, 
-  onOrdersUpdate 
+const GlassOrders = ({
+  orderType = 'in_progress',
+  globalState,
+  onOrderUpdate,
+  onStockUpdate,
+  onOrdersUpdate
 }) => {
 
   const [loading, setLoading] = useState(false);
@@ -51,9 +51,23 @@ const GlassOrders = ({
     if (component.status === 'ready_to_dispatch') return 0;
 
     const totalQuantity = component.qty || 0;
-    const completedQty = component.completed_qty || 0;
-    const remaining = totalQuantity - completedQty;
 
+    // Use completed_qty if available, otherwise calculate from tracking
+    let completedQty = component.completed_qty || 0;
+
+    // If completed_qty is not available or seems outdated, calculate from tracking
+    if (component.tracking && Array.isArray(component.tracking)) {
+      const trackingTotal = component.tracking.reduce((total, entry) => {
+        const stockUsed = Number(entry.stock_used) || 0;
+        const quantityProduced = Number(entry.quantity_produced) || 0;
+        return total + stockUsed + quantityProduced;
+      }, 0);
+
+      // Use the higher value between completed_qty and tracking calculation
+      completedQty = Math.max(completedQty, trackingTotal);
+    }
+
+    const remaining = totalQuantity - completedQty;
     return Math.max(0, remaining);
   }, []);
 
@@ -335,6 +349,8 @@ const GlassOrders = ({
     handleClose();
   }, [onOrderUpdate, handleClose]);
 
+
+
   const handleDispatch = useCallback((order, item, component) => {
     setSelectedOrder(order);
     setSelectedItem(item);
@@ -437,7 +453,7 @@ const GlassOrders = ({
           aggregatedBottles={aggregatedglasss}
           searchTerm={searchTerm}
           getAvailableStock={getAvailableStock}
-          onStockUpdate={onStockUpdate} 
+          onStockUpdate={onStockUpdate}
         />
       )}
 

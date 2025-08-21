@@ -9,12 +9,12 @@ import AddGlassStock from './components/AddGlassStock.jsx';
 import Pagination from '../../utils/Pagination.jsx';
 import AddVehicleDetails from './components/AddVehicleDetails.jsx';
 
-const GlassOrders = ({
-  orderType = 'in_progress',
-  globalState,
-  onOrderUpdate,
-  onStockUpdate,
-  onOrdersUpdate
+const GlassOrders = ({ 
+  orderType = 'in_progress', 
+  globalState, 
+  onOrderUpdate, 
+  onStockUpdate, 
+  onOrdersUpdate 
 }) => {
 
   const [loading, setLoading] = useState(false);
@@ -51,23 +51,9 @@ const GlassOrders = ({
     if (component.status === 'ready_to_dispatch') return 0;
 
     const totalQuantity = component.qty || 0;
-
-    // Use completed_qty if available, otherwise calculate from tracking
-    let completedQty = component.completed_qty || 0;
-
-    // If completed_qty is not available or seems outdated, calculate from tracking
-    if (component.tracking && Array.isArray(component.tracking)) {
-      const trackingTotal = component.tracking.reduce((total, entry) => {
-        const stockUsed = Number(entry.stock_used) || 0;
-        const quantityProduced = Number(entry.quantity_produced) || 0;
-        return total + stockUsed + quantityProduced;
-      }, 0);
-
-      // Use the higher value between completed_qty and tracking calculation
-      completedQty = Math.max(completedQty, trackingTotal);
-    }
-
+    const completedQty = component.completed_qty || 0;
     const remaining = totalQuantity - completedQty;
+
     return Math.max(0, remaining);
   }, []);
 
@@ -343,13 +329,12 @@ const GlassOrders = ({
     setCurrentPage(1);
   }, []);
 
+  // Main order update handler - delegates to parent
   const handleLocalOrderUpdate = useCallback((orderNumber, updatedComponent) => {
     const newStatus = updatedComponent?.status;
     onOrderUpdate(orderNumber, updatedComponent, newStatus);
     handleClose();
   }, [onOrderUpdate, handleClose]);
-
-
 
   const handleDispatch = useCallback((order, item, component) => {
     setSelectedOrder(order);
@@ -357,7 +342,7 @@ const GlassOrders = ({
     setShowVehicleDetails(true);
   }, []);
 
-
+  // Loading states
   if (!glassMasterReady) {
     return (
       <div className="flex items-center justify-center py-16">
@@ -453,7 +438,7 @@ const GlassOrders = ({
           aggregatedBottles={aggregatedglasss}
           searchTerm={searchTerm}
           getAvailableStock={getAvailableStock}
-          onStockUpdate={onStockUpdate}
+          onStockUpdate={onStockUpdate} 
         />
       )}
 

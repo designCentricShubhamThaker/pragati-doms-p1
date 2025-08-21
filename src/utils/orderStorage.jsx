@@ -114,10 +114,6 @@ export const splitOrdersByTeamStatus = (orders, team) => {
   };
 };
 
-
-
-
-
 export const updateOrderInStorage = (team, updatedOrder, status) => {
   const key = getStorageKeys(team)[status.toUpperCase()];
   const orders = getLocalStorageData(key) || [];

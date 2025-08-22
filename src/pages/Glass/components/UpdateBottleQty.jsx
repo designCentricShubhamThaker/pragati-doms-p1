@@ -133,7 +133,7 @@ const UpdateBottleQty = ({ isOpen, onClose, orderData, itemData, stockQuantities
 
 
 
-  const handleSave = async () => {
+   const handleSave = async () => {
     try {
       setLoading(true);
       setError(null);
@@ -172,8 +172,47 @@ const UpdateBottleQty = ({ isOpen, onClose, orderData, itemData, stockQuantities
         }
       }
 
+      // Create updated order data with new tracking information
+      const updatedOrder = { ...orderData };
+      const updatedItems = updatedOrder.items.map(item => {
+        if (item.item_id === itemData.item_id) {
+          return {
+            ...item,
+            components: item.components.map(component => {
+              const update = updates.find(u => u.component_id === component.component_id);
+              if (update) {
+                // Create new tracking entry
+                const newTrackingEntry = {
+                  date: update.date,
+                  username: "bottle_team",
+                  quantity_produced: update.quantity_produced,
+                  stock_used: update.stock_used,
+                  total_completed: update.total_completed,
+                  notes: update.notes
+                };
+
+                // Append to existing tracking array
+                const updatedTracking = [...(component.tracking || []), newTrackingEntry];
+
+                // Update component with new values
+                return {
+                  ...component,
+                  completed_qty: update.total_completed,
+                  status: update.total_completed >= component.qty ? 'COMPLETED' : 'IN_PROGRESS',
+                  tracking: updatedTracking
+                };
+              }
+              return component;
+            })
+          };
+        }
+        return item;
+      });
+
+      updatedOrder.items = updatedItems;
+
+      // Process API calls
       for (let update of updates) {
-        // Debug logging for API calls
         console.log('Making API call with data_code:', update.component_data_code);
 
         const glassResult = await fetch(
@@ -187,7 +226,7 @@ const UpdateBottleQty = ({ isOpen, onClose, orderData, itemData, stockQuantities
               stock_used: update.stock_used,
               total_completed: update.total_completed,
               notes: update.notes,
-              username:"bottle_team"
+              username: "bottle_team"
             }),
           }
         );
@@ -229,10 +268,8 @@ const UpdateBottleQty = ({ isOpen, onClose, orderData, itemData, stockQuantities
 
       setSuccessMessage('Glass quantities updated successfully!');
 
-      
-
       setTimeout(() => {
-        // ✅ Get updated glass master data from localStorage and pass it to onStockUpdate
+        // Update glass master data
         try {
           const updatedGlassData = JSON.parse(localStorage.getItem("glassMaster") || "[]");
           onStockUpdate?.(updatedGlassData); 
@@ -240,10 +277,12 @@ const UpdateBottleQty = ({ isOpen, onClose, orderData, itemData, stockQuantities
           console.error('Error reading updated glass master data:', error);
           onStockUpdate?.([]); 
         }
+        
+        // Update order data with new tracking information
+        onUpdate(updatedOrder);
+        
         onClose();
       }, 1500);
-
-      
 
     } catch (err) {
       console.error('Error updating glass quantities:', err);

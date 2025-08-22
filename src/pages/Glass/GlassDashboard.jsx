@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Menu, ChevronLeft } from 'lucide-react';
 import { FaPowerOff } from "react-icons/fa";
 import SharedHeader from '../../components/SharedHeader.jsx';
@@ -11,20 +11,14 @@ const GlassDashboard = ({ isEmbedded = false }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { currentDateTime, formatTime, formatTimeMobile } = useCurrentDateTime();
 
-
   const [globalState, setGlobalState] = useState({
     allProducts: [],
-    orders: {
-      in_progress: [],
-      ready_to_dispatch: [],
-      dispatched: []
-    },
+    allOrders: [], // Single orders array
     loading: false,
     error: null,
     glassMasterReady: false,
     dataVersion: 0 
   });
-
 
   const fetchGlassMaster = useCallback(async () => {
     try {
@@ -58,7 +52,6 @@ const GlassDashboard = ({ isEmbedded = false }) => {
     }
   }, []);
 
-
   useEffect(() => {
     const initializeData = async () => {
       const cachedData = localStorage.getItem("glassMaster");
@@ -85,40 +78,15 @@ const GlassDashboard = ({ isEmbedded = false }) => {
     initializeData();
   }, [fetchGlassMaster]);
 
-
-  const handleOrderUpdate = useCallback((orderNumber, updatedComponent, newStatus) => {
+  const handleOrderUpdate = useCallback((updatedOrder) => {
     setGlobalState(prev => {
-      const newOrders = { ...prev.orders };
-
-      Object.keys(newOrders).forEach(bucket => {
-        const orderIndex = newOrders[bucket].findIndex(
-          order => order.order_number === orderNumber
-        );
-
-        if (orderIndex !== -1) {
-          const updatedOrder = {
-            ...newOrders[bucket][orderIndex],
-            items: newOrders[bucket][orderIndex].items.map(item => ({
-              ...item,
-              components: item.components.map(c =>
-                c._id === updatedComponent._id ? updatedComponent : c
-              )
-            }))
-          };
-
-          if (newStatus && bucket !== newStatus) {
-            newOrders[bucket].splice(orderIndex, 1);
-            if (!newOrders[newStatus]) newOrders[newStatus] = [];
-            newOrders[newStatus].push(updatedOrder);
-          } else {
-            newOrders[bucket][orderIndex] = updatedOrder;
-          }
-        }
-      });
+      const updatedOrders = prev.allOrders.map(order => 
+        order.order_number === updatedOrder.order_number ? updatedOrder : order
+      );
 
       return {
         ...prev,
-        orders: newOrders,
+        allOrders: updatedOrders,
         dataVersion: prev.dataVersion + 1
       };
     });
@@ -135,14 +103,10 @@ const GlassDashboard = ({ isEmbedded = false }) => {
     console.log('Dashboard: Stock updated and synced');
   }, []);
 
-
-  const handleOrdersUpdate = useCallback((orderType, newOrders) => {
+  const handleOrdersUpdate = useCallback((newOrders) => {
     setGlobalState(prev => ({
       ...prev,
-      orders: {
-        ...prev.orders,
-        [orderType]: newOrders
-      },
+      allOrders: newOrders,
       dataVersion: prev.dataVersion + 1
     }));
   }, []);
@@ -152,7 +116,7 @@ const GlassDashboard = ({ isEmbedded = false }) => {
     localStorage.clear();
     setGlobalState({
       allProducts: [],
-      orders: { in_progress: [], ready_to_dispatch: [], dispatched: [] },
+      allOrders: [],
       loading: false,
       error: null,
       glassMasterReady: false,
@@ -293,8 +257,6 @@ const GlassDashboard = ({ isEmbedded = false }) => {
           </div>
         </div>
       </nav>
-
-
 
       <main>
         {renderActiveComponent()}

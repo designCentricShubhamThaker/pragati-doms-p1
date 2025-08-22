@@ -1,8 +1,4 @@
-export const getStorageKeys = (team) => ({
-  IN_PROGRESS: `${team}_inProgressOrder`,
-  READY_TO_DISPATCH: `${team}_readyToDispatchOrder`,
-  DISPATCHED: `${team}_dispatchedOrders`
-});
+export const getStorageKey = (team) => `${team}_orders`;
 
 export const getLocalStorageData = (key) => {
   try {
@@ -22,19 +18,35 @@ export const setLocalStorageData = (key, data) => {
   }
 };
 
-export const splitOrdersByStatus = (orders, isOrderCompletedFn) => {
-  console.log(isOrderCompletedFn, "Function Order")
-  const pending = [];
-  const completed = [];
+export const filterOrdersByType = (orders, orderType, team) => {
+  if (!orders || !Array.isArray(orders)) return [];
 
-  orders.forEach(order => {
-    if (isOrderCompletedFn(order)) {
-      completed.push(order);
-    }
-    else pending.push(order);
-  });
+  return orders
+    .map(order => {
+      const filteredItems = order.items
+        ?.map(item => {
+          const filteredComponents = item.components?.filter(component => {
+            if (component.component_type !== team) return false;
+            
+            switch (orderType) {
+              case 'in_progress':
+                return component.status === "IN_PROGRESS" || component.status === "PENDING";
+              case 'ready_to_dispatch':
+                return component.status === "READY_TO_DISPATCH";
+              case 'dispatched':
+                return component.status === "DISPATCHED";
+              default:
+                return false;
+            }
+          }) || [];
 
-  return { pendingOrders: pending, completedOrders: completed };
+          return filteredComponents.length > 0 ? { ...item, components: filteredComponents } : null;
+        })
+        .filter(item => item !== null) || [];
+
+      return filteredItems.length > 0 ? { ...order, items: filteredItems } : null;
+    })
+    .filter(order => order !== null);
 };
 
 export const splitOrdersByTeamStatus = (orders, team) => {
@@ -42,104 +54,54 @@ export const splitOrdersByTeamStatus = (orders, team) => {
   console.log("📦 Orders received:", orders);
   console.log("👥 Team filter:", team);
 
-  const inProgressOrders = [];
-  const readyToDispatchOrders = [];
-  const dispatchedOrders = [];
+  const processedOrders = [];
 
   orders.forEach((order, orderIndex) => {
     console.log(`\n➡️ Processing Order #${orderIndex + 1}:`, order.order_number);
 
-    const inProgressItems = [];
-    const readyToDispatchItems = [];
-    const dispatchedItems = [];
+    const teamItems = [];
 
     order.items.forEach((item, itemIndex) => {
       console.log(`  🛠 Item #${itemIndex + 1}:`, item.item_name);
 
-      const inProgressComponents = [];
-      const readyToDispatchComponents = [];
-      const dispatchedComponents = [];
-
-      item.components.forEach((component, compIndex) => {
-        console.log(`    🔹 Component #${compIndex + 1}:`, component.name, "| Type:", component.component_type, "| Status:", component.status);
-
-        if (component.component_type === team) {
-          if (component.status === "IN_PROGRESS" || component.status === "PENDING") {
-            console.log("      ✅ Added to IN_PROGRESS");
-            inProgressComponents.push(component);
-          } else if (component.status === "READY_TO_DISPATCH") {
-            console.log("      📦 Added to READY_TO_DISPATCH");
-            readyToDispatchComponents.push(component);
-          } else if (component.status === "DISPATCHED") {
-            console.log("      🚚 Added to DISPATCHED");
-            dispatchedComponents.push(component);
-          }
-        }
+      const teamComponents = item.components.filter(component => {
+        console.log(`    🔹 Component:`, component.name, "| Type:", component.component_type, "| Status:", component.status);
+        return component.component_type === team;
       });
 
-      if (inProgressComponents.length > 0) {
-        inProgressItems.push({ ...item, components: inProgressComponents });
-      }
-      if (readyToDispatchComponents.length > 0) {
-        readyToDispatchItems.push({ ...item, components: readyToDispatchComponents });
-      }
-      if (dispatchedComponents.length > 0) {
-        dispatchedItems.push({ ...item, components: dispatchedComponents });
+      if (teamComponents.length > 0) {
+        teamItems.push({ ...item, components: teamComponents });
+        console.log("      ✅ Added to team items");
       }
     });
 
-    if (inProgressItems.length > 0) {
-      console.log("  ➕ Order added to IN_PROGRESS");
-      inProgressOrders.push({ ...order, items: inProgressItems });
-    }
-    if (readyToDispatchItems.length > 0) {
-      console.log("  ➕ Order added to READY_TO_DISPATCH");
-      readyToDispatchOrders.push({ ...order, items: readyToDispatchItems });
-    }
-    if (dispatchedItems.length > 0) {
-      console.log("  ➕ Order added to DISPATCHED");
-      dispatchedOrders.push({ ...order, items: dispatchedItems });
+    if (teamItems.length > 0) {
+      console.log("  ➕ Order added to processed orders");
+      processedOrders.push({ ...order, items: teamItems });
     }
   });
 
   console.log("\n📊 Final Results:");
-  console.log("  IN_PROGRESS Orders:", inProgressOrders);
-  console.log("  READY_TO_DISPATCH Orders:", readyToDispatchOrders);
-  console.log("  DISPATCHED Orders:", dispatchedOrders);
+  console.log("  Processed Orders:", processedOrders);
 
-  return {
-    inProgressOrders,
-    readyToDispatchOrders,
-    dispatchedOrders
-  };
+  return processedOrders;
 };
 
-export const updateOrderInStorage = (team, updatedOrder, status) => {
-  const key = getStorageKeys(team)[status.toUpperCase()];
+export const updateOrderInStorage = (team, updatedOrder) => {
+  const key = getStorageKey(team);
   const orders = getLocalStorageData(key) || [];
   const index = orders.findIndex(order => order.order_number === updatedOrder.order_number);
+  
   if (index !== -1) {
     orders[index] = updatedOrder;
     setLocalStorageData(key, orders);
   }
+  
+  return orders;
 };
-
-export const moveOrderInStorage = (team, orderNumber, fromStatus, toStatus) => {
-  const fromKey = getStorageKeys(team)[fromStatus.toUpperCase()];
-  const toKey = getStorageKeys(team)[toStatus.toUpperCase()];
-  const fromOrders = getLocalStorageData(fromKey) || [];
-  const toOrders = getLocalStorageData(toKey) || [];
-  const index = fromOrders.findIndex(order => order.order_number === orderNumber);
-  if (index === -1) return;
-  const [movedOrder] = fromOrders.splice(index, 1);
-  toOrders.push(movedOrder);
-  setLocalStorageData(fromKey, fromOrders);
-  setLocalStorageData(toKey, toOrders);
-};
-
 
 export const initializeLocalStorage = async (team, filterOrderFn) => {
-  const keys = getStorageKeys(team);
+  const key = getStorageKey(team);
 
   const response = await fetch('https://doms-k1fi.onrender.com/api/orders/');
   if (!response.ok) throw new Error('Failed to fetch orders');
@@ -152,21 +114,10 @@ export const initializeLocalStorage = async (team, filterOrderFn) => {
     })
     .filter(order => order !== null);
 
+  const processedOrders = splitOrdersByTeamStatus(filteredOrders, team);
 
-  const {
-    inProgressOrders,
-    readyToDispatchOrders,
-    dispatchedOrders
-  } = splitOrdersByTeamStatus(filteredOrders, team);
+  // Save in single storage key
+  setLocalStorageData(key, processedOrders);
 
-  // Save in local storage
-  setLocalStorageData(keys.IN_PROGRESS, inProgressOrders);
-  setLocalStorageData(keys.READY_TO_DISPATCH, readyToDispatchOrders);
-  setLocalStorageData(keys.DISPATCHED, dispatchedOrders);
-
-  return {
-    inProgressOrders,
-    readyToDispatchOrders,
-    dispatchedOrders
-  };
+  return processedOrders;
 };

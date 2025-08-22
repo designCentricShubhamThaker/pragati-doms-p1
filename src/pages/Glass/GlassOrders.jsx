@@ -4,7 +4,7 @@ import StockAvailabilityDialog from './components/StockAvailabilityDialog.jsx';
 import OrderTable from "./components/OrderTable.jsx";
 import UpdateBottleQty from './components/UpdateBottleQty.jsx';
 import TeamSearchAggregation from '../../utils/TeamSearchAggregation.jsx';
-import { getLocalStorageData, getStorageKeys, initializeLocalStorage } from '../../utils/orderStorage.jsx';
+import { getLocalStorageData, getStorageKey, initializeLocalStorage, filterOrdersByType, updateOrderInStorage } from '../../utils/orderStorage.jsx';
 import AddGlassStock from './components/AddGlassStock.jsx';
 import Pagination from '../../utils/Pagination.jsx';
 import AddVehicleDetails from './components/AddVehicleDetails.jsx';
@@ -16,12 +16,12 @@ const GlassOrders = ({
   onStockUpdate, 
   onOrdersUpdate 
 }) => {
-
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [expandedRows, setExpandedRows] = useState(new Set());
   const [searchTerm, setSearchTerm] = useState('');
+  
   // Modal states
   const [showModal, setShowModal] = useState(false);
   const [showVehicleDetails, setShowVehicleDetails] = useState(false);
@@ -34,10 +34,9 @@ const GlassOrders = ({
 
   const ordersPerPage = 5;
   const TEAM = 'glass';
-  const STORAGE_KEYS = getStorageKeys(TEAM);
+  const STORAGE_KEY = getStorageKey(TEAM);
 
-  const { allProducts, orders, glassMasterReady, dataVersion } = globalState;
-  const currentOrders = orders[orderType] || [];
+  const { allProducts, allOrders, glassMasterReady, dataVersion } = globalState;
 
   const FilterGlassOrders = useCallback((items) => {
     return items.filter(item =>
@@ -45,6 +44,11 @@ const GlassOrders = ({
       item.components.some(component => component.component_type === "glass")
     );
   }, []);
+
+  // Filter orders by type from all orders
+  const currentOrders = useMemo(() => {
+    return filterOrdersByType(allOrders, orderType, TEAM);
+  }, [allOrders, orderType, TEAM]);
 
   const getRemainingQty = useCallback((component) => {
     if (!component || !component.qty) return 'N/A';
@@ -83,47 +87,32 @@ const GlassOrders = ({
       setError(null);
 
       let ordersToLoad = [];
-      const inProgressData = getLocalStorageData(STORAGE_KEYS.IN_PROGRESS);
-      const readyToDispatchData = getLocalStorageData(STORAGE_KEYS.READY_TO_DISPATCH);
-      const dispatchedData = getLocalStorageData(STORAGE_KEYS.DISPATCHED);
+      const cachedData = getLocalStorageData(STORAGE_KEY);
 
-      if (inProgressData && readyToDispatchData && dispatchedData) {
-        if (orderType === "in_progress") {
-          ordersToLoad = inProgressData.filter(order => order.order_status !== "PENDING_PI");
-        } else if (orderType === "ready_to_dispatch") {
-          ordersToLoad = readyToDispatchData;
-        } else if (orderType === "dispatched") {
-          ordersToLoad = dispatchedData;
-        }
+      if (cachedData && Array.isArray(cachedData)) {
+        ordersToLoad = cachedData.filter(order => order.order_status !== "PENDING_PI");
+        console.log('Using cached orders data');
       } else {
-
-        const initialized = await initializeLocalStorage(TEAM, FilterGlassOrders);
-        if (orderType === "in_progress") {
-          ordersToLoad = (initialized.inProgressOrders || []).filter(
-            order => order.order_status !== "PENDING_PI"
-          );
-        } else if (orderType === "ready_to_dispatch") {
-          ordersToLoad = initialized.readyToDispatchOrders || [];
-        } else if (orderType === "dispatched") {
-          ordersToLoad = initialized.dispatchedOrders || [];
-        }
+        console.log('No cached data, fetching fresh orders');
+        const freshOrders = await initializeLocalStorage(TEAM, FilterGlassOrders);
+        ordersToLoad = freshOrders.filter(order => order.order_status !== "PENDING_PI");
       }
 
-      onOrdersUpdate(orderType, ordersToLoad);
+      onOrdersUpdate(ordersToLoad);
     } catch (err) {
       setError(err.message);
       console.error("Error in order initialization:", err);
     } finally {
       setLoading(false);
     }
-  }, [orderType, STORAGE_KEYS, TEAM, FilterGlassOrders, onOrdersUpdate]);
+  }, [STORAGE_KEY, TEAM, FilterGlassOrders, onOrdersUpdate]);
 
-  // Load orders when component mounts or orderType changes
+  // Load orders when component mounts
   useEffect(() => {
-    if (glassMasterReady && currentOrders.length === 0) {
+    if (glassMasterReady && allOrders.length === 0) {
       initializeOrderData();
     }
-  }, [orderType, glassMasterReady, currentOrders.length, initializeOrderData]);
+  }, [glassMasterReady, allOrders.length, initializeOrderData]);
 
   // Aggregated glass data - memoized based on currentOrders and dataVersion
   const aggregatedglasss = useMemo(() => {
@@ -256,7 +245,6 @@ const GlassOrders = ({
   const handleCloseAddStock = useCallback(() => {
     setShowAddStockModal(false);
     setAddStockGlassDetails(null);
-    // The parent will handle the stock update through onStockUpdate
   }, []);
 
   const toggleRowExpansion = useCallback((rowId) => {
@@ -329,12 +317,16 @@ const GlassOrders = ({
     setCurrentPage(1);
   }, []);
 
-  // Main order update handler - delegates to parent
-  const handleLocalOrderUpdate = useCallback((orderNumber, updatedComponent) => {
-    const newStatus = updatedComponent?.status;
-    onOrderUpdate(orderNumber, updatedComponent, newStatus);
+  // Main order update handler - updates localStorage and calls parent
+  const handleLocalOrderUpdate = useCallback((updatedOrder) => {
+    // Update localStorage
+    updateOrderInStorage(TEAM, updatedOrder);
+    
+    // Update parent state
+    onOrderUpdate(updatedOrder);
+    
     handleClose();
-  }, [onOrderUpdate, handleClose]);
+  }, [TEAM, onOrderUpdate, handleClose]);
 
   const handleDispatch = useCallback((order, item, component) => {
     setSelectedOrder(order);

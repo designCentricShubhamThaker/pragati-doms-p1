@@ -19,22 +19,11 @@ const OrderTable = ({
   formatStatusLabel,
   getAvailableStock,
 }) => {
- function sumTrackingKey(tracking, key) {
-  // Handle null, undefined, or non-array tracking
-  if (!tracking || !Array.isArray(tracking) || tracking.length === 0) {
-    return 0;
+function sumTrackingKey(tracking, key) {
+    return tracking.reduce((total, entry) => {
+      return total + (Number(entry[key]) || 0);
+    }, 0);
   }
-  
-  return tracking.reduce((total, entry) => {
-    // Ensure entry exists and has the key
-    if (!entry || typeof entry !== 'object') {
-      return total;
-    }
-    
-    const value = Number(entry[key]) || 0;
-    return total + value;
-  }, 0);
-}
   if (currentOrders.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-16 px-4">

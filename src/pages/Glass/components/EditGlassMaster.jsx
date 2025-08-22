@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Dialog, DialogBackdrop, DialogPanel, DialogTitle } from '@headlessui/react';
 import { X, Save } from 'lucide-react';
+import { getSocket } from '../../../context/SocketContext';
 
 const EditGlassMaster = ({ isOpen, onClose, product, onProductUpdated }) => {
   const [formData, setFormData] = useState({
@@ -17,8 +18,9 @@ const EditGlassMaster = ({ isOpen, onClose, product, onProductUpdated }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
+    const socket = getSocket();
 
-  // Populate form when product changes
+
   useEffect(() => {
     if (product) {
       setFormData({
@@ -45,44 +47,77 @@ const EditGlassMaster = ({ isOpen, onClose, product, onProductUpdated }) => {
     }));
   };
 
+  // const handleSubmit = async (e) => {
+  //   e.preventDefault();
+  //   setLoading(true);
+  //   setError('');
+
+  //   try {
+  //     const response = await fetch(`https://doms-k1fi.onrender.com/api/masters/glass/${product._id}`, {
+  //       method: 'PUT',
+  //       headers: {
+  //         'Content-Type': 'application/json',
+  //       },
+  //       body: JSON.stringify({
+  //         ...formData,
+  //         capacity: Number(formData.capacity),
+  //         neck_diameter: Number(formData.neck_diameter),
+  //         weight: Number(formData.weight),
+  //         available_stock: Number(formData.available_stock)
+  //       }),
+  //     });
+
+  //     const result = await response.json();
+
+  //     if (result.success) {
+  //       setSuccessMessage('Product updated successfully!');
+  //       setTimeout(() => {
+  //         onProductUpdated();
+  //         onClose();
+  //       }, 1500);
+  //     } else {
+  //       setError(result.message || 'Failed to update product');
+  //     }
+  //   } catch (err) {
+  //     setError('Error connecting to server');
+  //     console.error('Update error:', err);
+  //   } finally {
+  //     setLoading(false);
+  //   }
+  // };
+
+
   const handleSubmit = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    setError('');
+  e.preventDefault();
+  setLoading(true);
+  setError('');
 
-    try {
-      const response = await fetch(`https://doms-k1fi.onrender.com/api/masters/glass/${product._id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          ...formData,
-          capacity: Number(formData.capacity),
-          neck_diameter: Number(formData.neck_diameter),
-          weight: Number(formData.weight),
-          available_stock: Number(formData.available_stock)
-        }),
-      });
+  try {
+    const updateData = { ...formData };
 
-      const result = await response.json();
+    socket.emit("updateGlass", { productId: product._id, updateData });
 
-      if (result.success) {
-        setSuccessMessage('Product updated successfully!');
-        setTimeout(() => {
-          onProductUpdated();
-          onClose();
-        }, 1500);
-      } else {
-        setError(result.message || 'Failed to update product');
-      }
-    } catch (err) {
-      setError('Error connecting to server');
-      console.error('Update error:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
+    socket.once("glassUpdatedSelf", (updatedGlass) => {
+      setSuccessMessage("Product updated successfully!");
+      setTimeout(() => {
+        onProductUpdated?.(updatedGlass);
+        onClose();
+      }, 1500);
+    });
+
+    socket.once("glassUpdateError", (error) => {
+      console.error("Update glass error via socket:", error);
+      setError(error || "Failed to update product");
+    });
+
+  } catch (err) {
+    setError("Error connecting to server");
+    console.error("Update error:", err);
+  } finally {
+    setLoading(false);
+  }
+};
+
 
   if (!isOpen) return null;
 

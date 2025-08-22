@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Dialog, DialogBackdrop, DialogPanel, DialogTitle } from '@headlessui/react';
 import { X, Plus, Package } from 'lucide-react';
 import axios from 'axios';
+import { getSocket } from '../../../context/SocketContext';
 
 const AddGlassProductMaster = ({ isOpen, onClose, onProductAdded }) => {
   const [formData, setFormData] = useState({
@@ -19,7 +20,7 @@ const AddGlassProductMaster = ({ isOpen, onClose, onProductAdded }) => {
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState({});
   const [successMessage, setSuccessMessage] = useState('');
-
+const socket= getSocket()
   const resetForm = () => {
     setFormData({
       data_code: '',
@@ -69,7 +70,46 @@ const AddGlassProductMaster = ({ isOpen, onClose, onProductAdded }) => {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = async (e) => {
+  // const handleSubmit = async (e) => {
+  //   e.preventDefault();
+  //   if (!validateForm()) return;
+
+  //   setLoading(true);
+  //   setErrors({});
+
+  //   try {
+  //     const submitData = {
+  //       ...formData,
+  //       weight: Number(formData.weight),
+  //       capacity: Number(formData.capacity),
+  //       neck_diameter: Number(formData.neck_diameter),
+  //       mould_set: formData.mould_set ? Number(formData.mould_set) : 0
+  //     };
+
+  //     const { data } = await axios.post(
+  //       'https://doms-k1fi.onrender.com/api/masters/glass',
+  //       submitData
+  //     );
+
+  //     if (data.success) {
+  //       setSuccessMessage('Product added successfully!');
+  //       setTimeout(() => {
+  //         onProductAdded && onProductAdded();
+  //         handleClose();
+  //       }, 1500);
+  //     } else {
+  //       setErrors({ submit: data.message || 'Failed to add product' });
+  //     }
+  //   } catch (error) {
+  //     console.error('Error adding product:', error);
+  //     setErrors({ submit: 'Network error. Please try again.' });
+  //   } finally {
+  //     setLoading(false);
+  //   }
+  // };
+
+
+    const handleSubmit = async (e) => {
     e.preventDefault();
     if (!validateForm()) return;
 
@@ -77,35 +117,38 @@ const AddGlassProductMaster = ({ isOpen, onClose, onProductAdded }) => {
     setErrors({});
 
     try {
-      const submitData = {
-        ...formData,
-        weight: Number(formData.weight),
-        capacity: Number(formData.capacity),
-        neck_diameter: Number(formData.neck_diameter),
-        mould_set: formData.mould_set ? Number(formData.mould_set) : 0
-      };
+      const submitData = { ...formData };
 
-      const { data } = await axios.post(
-        'https://doms-k1fi.onrender.com/api/masters/glass',
-        submitData
-      );
+      // 🔥 Emit to socket instead of fetch
+      socket.emit("addGlass", submitData);
 
-      if (data.success) {
-        setSuccessMessage('Product added successfully!');
+      // ✅ Listen for confirmation (only this request)
+      socket.once("GlassAddedSelf", (newGlass) => {
+        setSuccessMessage("Product added successfully!");
         setTimeout(() => {
-          onProductAdded && onProductAdded();
+          onProductAdded?.(newGlass);  
           handleClose();
         }, 1500);
-      } else {
-        setErrors({ submit: data.message || 'Failed to add product' });
-      }
+      });
+
+      // ❌ Listen for error
+      socket.once("glassAddError", (error) => {
+        console.error("Add glaaa error via socket:", error);
+        setErrors({ submit: error || "Failed to add product" });
+      });
+        setTimeout(() => {
+         
+          handleClose();
+        }, 1500);
+
     } catch (error) {
-      console.error('Error adding product:', error);
-      setErrors({ submit: 'Network error. Please try again.' });
+      console.error("Error adding product:", error);
+      setErrors({ submit: "Network error. Please try again." });
     } finally {
       setLoading(false);
     }
   };
+
 
   const handleInputChange = (field, value) => {
     setFormData(prev => ({ ...prev, [field]: value }));

@@ -27,39 +27,37 @@ const TeamSearchAggregation = ({
     }
   };
 
-  useEffect(() => {
-    loadGlassMasterData();
+ useEffect(() => {
+  loadGlassMasterData();
 
-    // Listen for storage changes from other components
-    const handleStorageChange = (e) => {
-      if (e.key === 'glassMaster') {
-        console.log('TeamSearchAggregation: glassMaster localStorage changed, reloading...');
-        loadGlassMasterData();
-      }
-    };
-
-    // Listen for custom storage events dispatched by AddGlassStock
-    const handleCustomStorageChange = (e) => {
-      if (e.key === 'glassMaster') {
-        console.log('TeamSearchAggregation: glassMaster custom storage event received');
-        loadGlassMasterData();
-      }
-    };
-
-    window.addEventListener('storage', handleStorageChange);
-    window.addEventListener('storage', handleCustomStorageChange);
-
-    // Periodic check with reduced frequency for reliability
-    const interval = setInterval(() => {
+  // Listen for storage changes from other components
+  const handleStorageChange = (e) => {
+    if (e.key === 'glassMaster') {
+      console.log('TeamSearchAggregation: glassMaster localStorage changed, reloading...');
       loadGlassMasterData();
-    }, 3000);
+    }
+  };
 
-    return () => {
-      clearInterval(interval);
-      window.removeEventListener('storage', handleStorageChange);
-      window.removeEventListener('storage', handleCustomStorageChange);
-    };
-  }, []);
+  // Listen for custom glassMasterUpdated events
+  const handleGlassMasterUpdate = (e) => {
+    console.log('TeamSearchAggregation: glassMasterUpdated event received');
+    loadGlassMasterData();
+  };
+
+  window.addEventListener('storage', handleStorageChange);
+  window.addEventListener('glassMasterUpdated', handleGlassMasterUpdate);
+
+  // Periodic check with reduced frequency for reliability
+  const interval = setInterval(() => {
+    loadGlassMasterData();
+  }, 3000);
+
+  return () => {
+    clearInterval(interval);
+    window.removeEventListener('storage', handleStorageChange);
+    window.removeEventListener('glassMasterUpdated', handleGlassMasterUpdate);
+  };
+}, []);
 
   useEffect(() => {
     if (Object.keys(aggregatedItems).length > 0) {

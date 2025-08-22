@@ -1,4 +1,4 @@
-export const getStorageKey = (team) => `${team}_orders`;
+export const getStorageKey = (team) => `${team}_allOrders`;
 
 export const getLocalStorageData = (key) => {
   try {
@@ -18,35 +18,19 @@ export const setLocalStorageData = (key, data) => {
   }
 };
 
-export const filterOrdersByType = (orders, orderType, team) => {
-  if (!orders || !Array.isArray(orders)) return [];
+export const splitOrdersByStatus = (orders, isOrderCompletedFn) => {
+  const pending = [];
+  const completed = [];
 
-  return orders
-    .map(order => {
-      const filteredItems = order.items
-        ?.map(item => {
-          const filteredComponents = item.components?.filter(component => {
-            if (component.component_type !== team) return false;
-            
-            switch (orderType) {
-              case 'in_progress':
-                return component.status === "IN_PROGRESS" || component.status === "PENDING";
-              case 'ready_to_dispatch':
-                return component.status === "READY_TO_DISPATCH";
-              case 'dispatched':
-                return component.status === "DISPATCHED";
-              default:
-                return false;
-            }
-          }) || [];
+  orders.forEach(order => {
+    if (isOrderCompletedFn(order)) {
+      completed.push(order);
+    } else {
+      pending.push(order);
+    }
+  });
 
-          return filteredComponents.length > 0 ? { ...item, components: filteredComponents } : null;
-        })
-        .filter(item => item !== null) || [];
-
-      return filteredItems.length > 0 ? { ...order, items: filteredItems } : null;
-    })
-    .filter(order => order !== null);
+  return { pendingOrders: pending, completedOrders: completed };
 };
 
 export const splitOrdersByTeamStatus = (orders, team) => {
@@ -54,70 +38,234 @@ export const splitOrdersByTeamStatus = (orders, team) => {
   console.log("📦 Orders received:", orders);
   console.log("👥 Team filter:", team);
 
-  const processedOrders = [];
+  const inProgressOrders = [];
+  const readyToDispatchOrders = [];
+  const dispatchedOrders = [];
 
   orders.forEach((order, orderIndex) => {
     console.log(`\n➡️ Processing Order #${orderIndex + 1}:`, order.order_number);
 
-    const teamItems = [];
+    const inProgressItems = [];
+    const readyToDispatchItems = [];
+    const dispatchedItems = [];
 
     order.items.forEach((item, itemIndex) => {
       console.log(`  🛠 Item #${itemIndex + 1}:`, item.item_name);
 
-      const teamComponents = item.components.filter(component => {
-        console.log(`    🔹 Component:`, component.name, "| Type:", component.component_type, "| Status:", component.status);
-        return component.component_type === team;
+      const inProgressComponents = [];
+      const readyToDispatchComponents = [];
+      const dispatchedComponents = [];
+
+      item.components.forEach((component, compIndex) => {
+        console.log(`    🔹 Component #${compIndex + 1}:`, component.name, "| Type:", component.component_type, "| Status:", component.status);
+
+        if (component.component_type === team) {
+          if (component.status === "IN_PROGRESS" || component.status === "PENDING") {
+            console.log("      ✅ Added to IN_PROGRESS");
+            inProgressComponents.push(component);
+          } else if (component.status === "READY_TO_DISPATCH") {
+            console.log("      📦 Added to READY_TO_DISPATCH");
+            readyToDispatchComponents.push(component);
+          } else if (component.status === "DISPATCHED") {
+            console.log("      🚚 Added to DISPATCHED");
+            dispatchedComponents.push(component);
+          }
+        }
       });
 
-      if (teamComponents.length > 0) {
-        teamItems.push({ ...item, components: teamComponents });
-        console.log("      ✅ Added to team items");
+      if (inProgressComponents.length > 0) {
+        inProgressItems.push({ ...item, components: inProgressComponents });
+      }
+      if (readyToDispatchComponents.length > 0) {
+        readyToDispatchItems.push({ ...item, components: readyToDispatchComponents });
+      }
+      if (dispatchedComponents.length > 0) {
+        dispatchedItems.push({ ...item, components: dispatchedComponents });
       }
     });
 
-    if (teamItems.length > 0) {
-      console.log("  ➕ Order added to processed orders");
-      processedOrders.push({ ...order, items: teamItems });
+    if (inProgressItems.length > 0) {
+      console.log("  ➕ Order added to IN_PROGRESS");
+      inProgressOrders.push({ ...order, items: inProgressItems });
+    }
+    if (readyToDispatchItems.length > 0) {
+      console.log("  ➕ Order added to READY_TO_DISPATCH");
+      readyToDispatchOrders.push({ ...order, items: readyToDispatchItems });
+    }
+    if (dispatchedItems.length > 0) {
+      console.log("  ➕ Order added to DISPATCHED");
+      dispatchedOrders.push({ ...order, items: dispatchedItems });
     }
   });
 
-  console.log("\n📊 Final Results:");
-  console.log("  Processed Orders:", processedOrders);
+  return {
+    inProgressOrders,
+    readyToDispatchOrders,
+    dispatchedOrders
+  };
+};
 
-  return processedOrders;
+export const getOrdersByStatus = (team, status) => {
+  const storageKey = getStorageKey(team);
+  const allOrders = getLocalStorageData(storageKey) || [];
+  
+  return allOrders.filter(order => {
+    return order.items?.some(item => 
+      item.components?.some(component => 
+        component.component_type === team && 
+        (
+          (status === 'in_progress' && (component.status === 'IN_PROGRESS' || component.status === 'PENDING')) ||
+          (status === 'ready_to_dispatch' && component.status === 'READY_TO_DISPATCH') ||
+          (status === 'dispatched' && component.status === 'DISPATCHED')
+        )
+      )
+    );
+  }).map(order => {
+
+    const filteredItems = order.items?.map(item => {
+      const relevantComponents = item.components?.filter(component => 
+        component.component_type === team && 
+        (
+          (status === 'in_progress' && (component.status === 'IN_PROGRESS' || component.status === 'PENDING')) ||
+          (status === 'ready_to_dispatch' && component.status === 'READY_TO_DISPATCH') ||
+          (status === 'dispatched' && component.status === 'DISPATCHED')
+        )
+      ) || [];
+      
+      return relevantComponents.length > 0 ? { ...item, components: relevantComponents } : null;
+    }).filter(Boolean) || [];
+    
+    return filteredItems.length > 0 ? { ...order, items: filteredItems } : null;
+  }).filter(Boolean);
 };
 
 export const updateOrderInStorage = (team, updatedOrder) => {
-  const key = getStorageKey(team);
-  const orders = getLocalStorageData(key) || [];
-  const index = orders.findIndex(order => order.order_number === updatedOrder.order_number);
+  const storageKey = getStorageKey(team);
+  const allOrders = getLocalStorageData(storageKey) || [];
   
+  const index = allOrders.findIndex(order => order.order_number === updatedOrder.order_number);
   if (index !== -1) {
-    orders[index] = updatedOrder;
-    setLocalStorageData(key, orders);
+    allOrders[index] = updatedOrder;
+  } else {
+    allOrders.push(updatedOrder);
   }
   
-  return orders;
+  setLocalStorageData(storageKey, allOrders);
+};
+
+export const updateComponentStatus = (team, orderNumber, componentId, newStatus) => {
+  const storageKey = getStorageKey(team);
+  const allOrders = getLocalStorageData(storageKey) || [];
+  
+  const orderIndex = allOrders.findIndex(order => order.order_number === orderNumber);
+  if (orderIndex === -1) return false;
+  
+  let updated = false;
+  allOrders[orderIndex].items?.forEach(item => {
+    item.components?.forEach(component => {
+      if (component.id === componentId && component.component_type === team) {
+        component.status = newStatus;
+        updated = true;
+      }
+    });
+  });
+  
+  if (updated) {
+    setLocalStorageData(storageKey, allOrders);
+  }
+  
+  return updated;
 };
 
 export const initializeLocalStorage = async (team, filterOrderFn) => {
-  const key = getStorageKey(team);
+  const storageKey = getStorageKey(team);
+  
+  try {
+    const response = await fetch('https://doms-k1fi.onrender.com/api/orders/');
+    if (!response.ok) throw new Error('Failed to fetch orders');
+    const allOrders = await response.json() || [];
+    
+    console.log(allOrders, "ALL ORDERS");
+    
+    const filteredOrders = allOrders
+      .map(order => {
+        const filteredItems = filterOrderFn(order.items || []);
+        return filteredItems.length > 0 ? { ...order, items: filteredItems } : null;
+      })
+      .filter(order => order !== null);
+    
+    setLocalStorageData(storageKey, filteredOrders);
+    
 
-  const response = await fetch('https://doms-k1fi.onrender.com/api/orders/');
-  if (!response.ok) throw new Error('Failed to fetch orders');
-  const allOrders = await response.json() || [];
+    const {
+      inProgressOrders,
+      readyToDispatchOrders,
+      dispatchedOrders
+    } = splitOrdersByTeamStatus(filteredOrders, team);
+    
+    return {
+      allOrders: filteredOrders,
+      inProgressOrders,
+      readyToDispatchOrders,
+      dispatchedOrders
+    };
+  } catch (error) {
+    console.error('Error initializing localStorage:', error);
+    throw error;
+  }
+};
 
-  const filteredOrders = allOrders
-    .map(order => {
-      const filteredItems = filterOrderFn(order.items || []);
-      return filteredItems.length > 0 ? { ...order, items: filteredItems } : null;
-    })
-    .filter(order => order !== null);
+export const getAllOrdersForTeam = (team) => {
+  const storageKey = getStorageKey(team);
+  return getLocalStorageData(storageKey) || [];
+};
 
-  const processedOrders = splitOrdersByTeamStatus(filteredOrders, team);
 
-  // Save in single storage key
-  setLocalStorageData(key, processedOrders);
+ export const updateOrderInLocalStorage = (team ,updatedOrder) => {
+  try {
+    const storageKey = getStorageKey(team);
+    const stored = getLocalStorageData(storageKey);
+    if (!stored) return;
 
-  return processedOrders;
+    console.log(stored,"stored")
+    const allOrders = stored;
+
+    const orderIndex = allOrders.findIndex(
+      o => o._id === updatedOrder._id || o.order_number === updatedOrder.order_number
+    );
+
+    if (orderIndex === -1) {
+      console.warn("Order not found in localStorage");
+      return;
+    }
+
+    const currentOrder = allOrders[orderIndex];
+
+    // Merge deeply only updated fields
+    const mergedOrder = {
+      ...currentOrder,
+      ...updatedOrder,
+      items: currentOrder.items.map(item => {
+        const updatedItem = updatedOrder.items?.find(ui => ui.item_id === item.item_id);
+        if (!updatedItem) return item;
+
+        return {
+          ...item,
+          ...updatedItem,
+          components: item.components.map(comp => {
+            const updatedComp = updatedItem.components?.find(uc => uc.component_id === comp.component_id);
+            return updatedComp ? { ...comp, ...updatedComp } : comp;
+          })
+        };
+      })
+    };
+
+    allOrders[orderIndex] = mergedOrder;
+    console.log(allOrders,"allOrder")
+    setLocalStorageData(storageKey,allOrders);
+
+    console.log("Order updated in localStorage:", mergedOrder);
+  } catch (err) {
+    console.error("Failed to update localStorage order", err);
+  }
 };

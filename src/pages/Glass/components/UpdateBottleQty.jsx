@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Dialog, DialogBackdrop, DialogPanel, DialogTitle } from '@headlessui/react';
 import { X, Save, CloudHail } from 'lucide-react';
+import { getLocalStorageData, getStorageKey } from '../../../utils/orderStorage';
+import { getSocket } from '../../../context/SocketContext';
 
 
 const UpdateBottleQty = ({ isOpen, onClose, orderData, itemData, stockQuantities = {}, onUpdate, onStockUpdate }) => {
@@ -8,6 +10,7 @@ const UpdateBottleQty = ({ isOpen, onClose, orderData, itemData, stockQuantities
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState('');
+  const socket = getSocket();
 
   useEffect(() => {
     if (isOpen && itemData?.components) {
@@ -129,168 +132,286 @@ const UpdateBottleQty = ({ isOpen, onClose, orderData, itemData, stockQuantities
     }
   };
 
+// const handleSave = async () => {
+//   try {
+//     setLoading(true);
+//     setError(null);
+
+//     const updates = assignments
+//       .filter(assignment => assignment.todayQty > 0)
+//       .map(assignment => {
+//         const currentCompleted = assignment.completed_qty || 0;
+//         const stockUsed = stockQuantities[assignment.component_id] || 0;
+//         const newProduction = Math.max(0, assignment.todayQty - stockUsed);
+//         const newCompleted = currentCompleted + assignment.todayQty;
+
+//         return {
+//           component_data_code: assignment.data_code,
+//           component_id: assignment.component_id,
+//           quantity_produced: newProduction,
+//           stock_used: stockUsed,
+//           total_completed: newCompleted,
+//           notes: assignment.notes || '',
+//           date: new Date().toISOString()
+//         };
+//       });
+
+//     if (updates.length === 0) {
+//       setError('Please enter quantity for at least one Glass');
+//       setLoading(false);
+//       return;
+//     }
+
+//     for (let assignment of assignments) {
+//       const remaining = getRemainingQty(assignment);
+//       if (assignment.todayQty > remaining) {
+//         setError(`Quantity for ${assignment.name} exceeds remaining amount (${remaining})`);
+//         setLoading(false);
+//         return;
+//       }
+//     }
+//     const TEAM = 'glass';
+//     const STORAGE_KEY = getStorageKey(TEAM);
+//     const allStoredOrders = getLocalStorageData(STORAGE_KEY) || [];
+    
+//     const completeOrderIndex = allStoredOrders.findIndex(
+//       order => order.order_number === orderData.order_number
+//     );
+    
+//     if (completeOrderIndex === -1) {
+//       throw new Error('Order not found in storage');
+//     }
+
+//     const completeOrder = JSON.parse(JSON.stringify(allStoredOrders[completeOrderIndex]));
+
+    
+//     const updateMap = new Map();
+//     updates.forEach(update => {
+//       updateMap.set(update.component_id, update);
+//     });
+    
+
+//     const updatedOrder = {
+//       ...completeOrder,
+//       items: completeOrder.items.map(item => {
+//         if (item.item_id === itemData.item_id) {
+//           console.log('Updating item:', item.item_id);
+          
+//           return {
+//             ...item,
+//             components: item.components.map(component => {
+//               const update = updateMap.get(component.component_id);
+              
+//               if (update && component.component_type === "glass") {
+//                 console.log('Updating glass component:', component.component_id);
+                
+//                 const newTrackingEntry = {
+//                   date: update.date,
+//                   username: "bottle_team",
+//                   quantity_produced: update.quantity_produced,
+//                   stock_used: update.stock_used,
+//                   total_completed: update.total_completed,
+//                   notes: update.notes
+//                 };
+
+//                 const updatedTracking = [...(component.tracking || []), newTrackingEntry];
+//                 const newStatus = update.total_completed >= component.qty ? 'COMPLETED' : 'IN_PROGRESS';
+
+//                 return {
+//                   ...component, 
+//                   completed_qty: update.total_completed,
+//                   status: newStatus,
+//                   tracking: updatedTracking
+//                 };
+//               }
+//               return component;
+//             })
+//           };
+//         }
+//         return item;
+//       })
+//     };
+
+//     for (let update of updates) {
+//       console.log('Making API call with data_code:', update.component_data_code);
+//       const glassResult = await fetch(
+//         `https://doms-k1fi.onrender.com/api/masters/glass/production/${encodeURIComponent(orderData.order_number)}/${itemData?.item_id}/${update.component_id}`,
+//         {
+//           method: "PATCH",
+//           headers: { "Content-Type": "application/json" },
+//           body: JSON.stringify({
+//             date: update.date || new Date().toISOString(),
+//             quantity_produced: update.quantity_produced,
+//             stock_used: update.stock_used,
+//             total_completed: update.total_completed,
+//             notes: update.notes,
+//             username: "bottle_team"
+//           }),
+//         }
+//       );
+
+//       if (!glassResult.ok) {
+//         throw new Error(`HTTP error! status: ${glassResult.status}`);
+//       }
+
+//       const glassResponse = await glassResult.json();
+//       if (!glassResponse.success) {
+//         throw new Error(glassResponse.message || 'Glass update failed');
+//       }
+
+//       if (update.stock_used > 0) {
+//         const adjustmentValue = -(update.stock_used);
+//         const stockAdjustResult = await fetch(
+//           `https://doms-k1fi.onrender.com/api/masters/glass/stock/adjust/${update.component_data_code}`,
+//           {
+//             method: "PATCH",
+//             headers: { "Content-Type": "application/json" },
+//             body: JSON.stringify({ adjustment: Number(adjustmentValue) }),
+//           }
+//         );
+
+//         if (!stockAdjustResult.ok) {
+//           throw new Error(`Stock adjust failed: ${stockAdjustResult.status}`);
+//         }
+
+//         const stockAdjustResponse = await stockAdjustResult.json();
+//         if (!stockAdjustResponse.success) {
+//           throw new Error(stockAdjustResponse.message || 'Stock adjustment failed');
+//         }
+
+//         updateLocalStorageGlassMaster(update.component_data_code, adjustmentValue);
+//       }
+//     }
+//     allStoredOrders[completeOrderIndex] = updatedOrder;
+//     localStorage.setItem(STORAGE_KEY, JSON.stringify(allStoredOrders));
+
+//     window.dispatchEvent(new StorageEvent('storage', {
+//       key: STORAGE_KEY,
+//       newValue: JSON.stringify(allStoredOrders),
+//       storageArea: localStorage
+//     }));
+
+//     setSuccessMessage('Glass quantities updated successfully!');
+
+//     setTimeout(() => {
+//       try {
+//         const updatedGlassData = JSON.parse(localStorage.getItem("glassMaster") || "[]");
+//         onStockUpdate?.(updatedGlassData); 
+//       } catch (error) {
+//         console.error('Error reading updated glass master data:', error);
+//         onStockUpdate?.([]); 
+//       }
+//       onUpdate(updatedOrder);
+//       onClose();
+//     }, 1500);
+
+//   } catch (err) {
+//     console.error('Error updating glass quantities:', err);
+//     setError(err.message || 'Failed to update glass quantities');
+//   } finally {
+//     setLoading(false);
+//   }
+// };
 
 
+const handleSave = async () => {
+  try {
+    setLoading(true);
+    setError(null);
 
+    const updates = assignments
+      .filter(assignment => assignment.todayQty > 0)
+      .map(assignment => {
+        const currentCompleted = assignment.completed_qty || 0;
+        const stockUsed = stockQuantities[assignment.component_id] || 0;
+        const newProduction = Math.max(0, assignment.todayQty - stockUsed);
+        const newCompleted = currentCompleted + assignment.todayQty;
 
-   const handleSave = async () => {
-    try {
-      setLoading(true);
-      setError(null);
+        return {
+          component_data_code: assignment.data_code,
+          component_id: assignment.component_id,
+          quantity_produced: newProduction,
+          stock_used: stockUsed,
+          total_completed: newCompleted,
+          notes: assignment.notes || '',
+          date: new Date().toISOString()
+        };
+      });
 
-      const updates = assignments
-        .filter(assignment => assignment.todayQty > 0)
-        .map(assignment => {
-          const currentCompleted = assignment.completed_qty || 0;
-          const stockUsed = stockQuantities[assignment.component_id] || 0;
-          const newProduction = Math.max(0, assignment.todayQty - stockUsed);
-          const newCompleted = currentCompleted + assignment.todayQty;
+    if (updates.length === 0) {
+      setError('Please enter quantity for at least one Pump');
+      setLoading(false);
+      return;
+    }
 
-          return {
-            component_data_code: assignment.data_code,
-            component_id: assignment.component_id,
-            quantity_produced: newProduction,
-            stock_used: stockUsed,
-            total_completed: newCompleted,
-            notes: assignment.notes || '',
-            date: new Date().toISOString()
-          };
-        });
-
-      if (updates.length === 0) {
-        setError('Please enter quantity for at least one Glass');
+    for (let assignment of assignments) {
+      const remaining = getRemainingQty(assignment);
+      if (assignment.todayQty > remaining) {
+        setError(`Quantity for ${assignment.pump_name} exceeds remaining amount (${remaining})`);
         setLoading(false);
         return;
       }
+    }
 
-      for (let assignment of assignments) {
-        const remaining = getRemainingQty(assignment);
-        if (assignment.todayQty > remaining) {
-          setError(`Quantity for ${assignment.name} exceeds remaining amount (${remaining})`);
-          setLoading(false);
-          return;
+    for (let update of updates) {
+      const payload = {
+        order_number: orderData.order_number,
+        item_id: itemData?.item_id,
+        component_id: update.component_id,
+        component_data_code: update.component_data_code,
+        updateData: {
+          date: update.date,
+          quantity_produced: update.quantity_produced,
+          stock_used: update.stock_used,
+          total_completed: update.total_completed,
+          notes: update.notes
         }
-      }
+      };
 
-      // Create updated order data with new tracking information
-      const updatedOrder = { ...orderData };
-      const updatedItems = updatedOrder.items.map(item => {
-        if (item.item_id === itemData.item_id) {
-          return {
-            ...item,
-            components: item.components.map(component => {
-              const update = updates.find(u => u.component_id === component.component_id);
-              if (update) {
-                // Create new tracking entry
-                const newTrackingEntry = {
-                  date: update.date,
-                  username: "bottle_team",
-                  quantity_produced: update.quantity_produced,
-                  stock_used: update.stock_used,
-                  total_completed: update.total_completed,
-                  notes: update.notes
-                };
+      socket.emit("updateGlassProduction", payload);
 
-                // Append to existing tracking array
-                const updatedTracking = [...(component.tracking || []), newTrackingEntry];
-
-                // Update component with new values
-                return {
-                  ...component,
-                  completed_qty: update.total_completed,
-                  status: update.total_completed >= component.qty ? 'COMPLETED' : 'IN_PROGRESS',
-                  tracking: updatedTracking
-                };
-              }
-              return component;
-            })
-          };
-        }
-        return item;
+      socket.once("glassProductionUpdatedSelf", ({ order_number, item_id ,component_id , updatedComponent }) => {
+        console.log("✅ Production updated:",  order_number, item_id ,component_id , updatedComponent );
+        onUpdate( order_number, item_id ,component_id , updatedComponent ,updatedComponent?.status);
       });
 
-      updatedOrder.items = updatedItems;
+      socket.once("glassStockAdjustedSelf", ({ dataCode, newStock }) => {
+        console.log("📦 Stock adjusted:", dataCode, newStock);
 
-      // Process API calls
-      for (let update of updates) {
-        console.log('Making API call with data_code:', update.component_data_code);
+        const team = "glass";
+        const key = `${team}Master`;
+        const masterData = getLocalStorageData(key) || [];
 
-        const glassResult = await fetch(
-          `https://doms-k1fi.onrender.com/api/masters/glass/production/${encodeURIComponent(orderData.order_number)}/${itemData?.item_id}/${update.component_id}`,
-          {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              date: update.date || new Date().toISOString(),
-              quantity_produced: update.quantity_produced,
-              stock_used: update.stock_used,
-              total_completed: update.total_completed,
-              notes: update.notes,
-              username: "bottle_team"
-            }),
-          }
+        const updatedData = masterData.map((p) =>
+          p.data_code === dataCode ? { ...p, available_stock: newStock } : p
         );
 
-        if (!glassResult.ok) {
-          throw new Error(`HTTP error! status: ${glassResult.status}`);
-        }
+        onStockUpdate(updatedData);
+        localStorage.setItem("glassMaster", JSON.stringify(updatedData));
+      });
 
-        const glassResponse = await glassResult.json();
-        if (!glassResponse.success) {
-          throw new Error(glassResponse.message || 'Glass update failed');
-        }
-
-        if (update.stock_used > 0) {
-          const adjustmentValue = -(update.stock_used);
-
-          console.log('Stock adjustment API call for data_code:', update.component_data_code);
-
-          const stockAdjustResult = await fetch(
-            `https://doms-k1fi.onrender.com/api/masters/glass/stock/adjust/${update.component_data_code}`,
-            {
-              method: "PATCH",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ adjustment: Number(adjustmentValue) }),
-            }
-          );
-
-          if (!stockAdjustResult.ok) {
-            throw new Error(`Stock adjust failed: ${stockAdjustResult.status}`);
-          }
-
-          const stockAdjustResponse = await stockAdjustResult.json();
-          if (!stockAdjustResponse.success) {
-            throw new Error(stockAdjustResponse.message || 'Stock adjustment failed');
-          }
-          updateLocalStorageGlassMaster(update.component_data_code, adjustmentValue);
-        }
-      }
-
-      setSuccessMessage('Glass quantities updated successfully!');
-
-      setTimeout(() => {
-        // Update glass master data
-        try {
-          const updatedGlassData = JSON.parse(localStorage.getItem("glassMaster") || "[]");
-          onStockUpdate?.(updatedGlassData); 
-        } catch (error) {
-          console.error('Error reading updated glass master data:', error);
-          onStockUpdate?.([]); 
-        }
-        
-        // Update order data with new tracking information
-        onUpdate(updatedOrder);
-        
-        onClose();
-      }, 1500);
-
-    } catch (err) {
-      console.error('Error updating glass quantities:', err);
-      setError(err.message || 'Failed to update glass quantities');
-    } finally {
-      setLoading(false);
+      socket.once("glassProductionError", (error) => {
+        console.error("❌ Pump update failed:", error);
+        setError(error || "Pump update failed");
+      });
     }
-  };
+
+    setSuccessMessage("Quantities updated successfully!");
+    setTimeout(() => {
+      onClose();
+    }, 1500);
+
+  } catch (err) {
+    console.error("Error updating quantities:", err);
+    setError(err.message || "Failed to update quantities");
+  } finally {
+    setLoading(false);
+  }
+};
+
+
+
+
 
   return (
     <Dialog open={isOpen} onClose={onClose}>

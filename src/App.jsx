@@ -3,17 +3,20 @@ import Dashboard from './pages/Admin/Dashboard.jsx'
 
 
 import GlassDashboard from './pages/Glass/GlassDashboard.jsx'
+import { SocketProvider } from './context/SocketContext.jsx'
 // import FoilingDashboard from './pages/Foiling/FoilingDashboard.jsx'
 
 
 const App = () => {
   return (
-    <div className='text-red-200'>
+    <SocketProvider>
       {/* <Dashboard /> */}
       <GlassDashboard />
+    </SocketProvider>
 
-   
-    </div>
+
+
+
   )
 }
 

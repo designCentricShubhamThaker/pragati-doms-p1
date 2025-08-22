@@ -5,8 +5,9 @@ import MultiSelectDropdown from './components/MultiSelectDrowdown';
 
 import AddGlassProductMaster from './components/AddGlassProductMaster';
 import EditGlassMaster from './components/EditGlassMaster';
+import { getSocket } from '../../context/SocketContext';
 
-const ModernGlassProductDashboard = ({ allProducts, loading,
+const GlassMaster = ({ allProducts, loading,
   error, setAllProducts, filterLoading }) => {
   const [showFilters, setShowFilters] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -15,6 +16,7 @@ const ModernGlassProductDashboard = ({ allProducts, loading,
   const [editingProduct, setEditingProduct] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(50);
+  const socket = getSocket();
   const [filters, setFilters] = useState({
     search: '',
     categories: [],
@@ -61,7 +63,7 @@ const ModernGlassProductDashboard = ({ allProducts, loading,
     };
   }, [allProducts]);
 
- 
+
   const filteredProducts = useMemo(() => {
     return allProducts.filter(product => {
       if (filters.search) {
@@ -87,7 +89,7 @@ const ModernGlassProductDashboard = ({ allProducts, loading,
       const filterChecks = [
         { filterKey: 'categories', productKey: 'category' },
         { filterKey: 'shapes', productKey: 'shape' },
-        { filterKey: 'types', productKey: 'type' }, // Added type filter
+        { filterKey: 'types', productKey: 'type' },
         { filterKey: 'capacities', productKey: 'capacity' },
         { filterKey: 'neckDiameters', productKey: 'neck_diameter' },
         { filterKey: 'weights', productKey: 'weight' },
@@ -103,18 +105,15 @@ const ModernGlassProductDashboard = ({ allProducts, loading,
     });
   }, [allProducts, filters]);
 
-  // Paginate filtered products
   const paginatedProducts = useMemo(() => {
     const startIndex = (currentPage - 1) * itemsPerPage;
     const endIndex = startIndex + itemsPerPage;
     return filteredProducts.slice(startIndex, endIndex);
   }, [filteredProducts, currentPage, itemsPerPage]);
 
-  // Pagination calculations
   const totalPages = Math.ceil(filteredProducts.length / itemsPerPage);
   const totalRecords = filteredProducts.length;
 
-  // Reset to page 1 when filters change
   useEffect(() => {
     setCurrentPage(1);
   }, [filters]);
@@ -146,7 +145,7 @@ const ModernGlassProductDashboard = ({ allProducts, loading,
       search: '',
       categories: [],
       shapes: [],
-      types: [], // Added type reset
+      types: [],
       capacities: [],
       neckDiameters: [],
       weights: [],
@@ -218,25 +217,26 @@ const ModernGlassProductDashboard = ({ allProducts, loading,
     setShowEditModal(true);
   };
 
-
-  const handleDelete = async (productId) => {
+  const handleDelete = (productId) => {
     if (!window.confirm('Are you sure you want to delete this product?')) return;
 
-    try {
-      const response = await fetch(`https://doms-k1fi.onrender.com/api/masters/glass/${productId}`, {
-        method: 'DELETE',
-      });
+    console.log('Requesting delete via socket for:', productId);
 
-      if (response.ok) {
-        await fetchAllProducts(); // Refresh the data
-      } else {
-        alert('Failed to delete product');
+    socket.emit('deleteGlass', { productId });
+
+    socket.once('glassDeletedSelf', (deletedProductId) => {
+      if (deletedProductId === productId) {
+        alert('Product deleted successfully');
+        setAllProducts(prev => prev.filter(p => p._id !== productId));
       }
-    } catch (error) {
-      console.error('Delete error:', error);
-      alert('Error deleting product');
-    }
+    });
+
+    socket.once('glassDeleteError', (error) => {
+      console.error('Delete error via socket:', error);
+      alert(error || 'Error deleting product');
+    });
   };
+
 
   if (loading) {
     return (
@@ -649,4 +649,4 @@ const ModernGlassProductDashboard = ({ allProducts, loading,
   );
 };
 
-export default ModernGlassProductDashboard;
+export default GlassMaster;

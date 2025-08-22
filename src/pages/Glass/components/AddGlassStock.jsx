@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Dialog, DialogBackdrop, DialogPanel, DialogTitle } from '@headlessui/react';
 import { Search, Plus, Minus, Package, X, Check, TrendingUp, Calculator } from 'lucide-react';
+import { getSocket } from '../../../context/SocketContext';
 
 const AddGlassStock = ({ isOpen, onClose, initialSearchTerm = "", glassDetails, onStockUpdate }) => {
   const [searchTerm, setSearchTerm] = useState(initialSearchTerm);
@@ -10,6 +11,7 @@ const AddGlassStock = ({ isOpen, onClose, initialSearchTerm = "", glassDetails, 
   const [stockUpdates, setStockUpdates] = useState({});
   const [successMessages, setSuccessMessages] = useState({});
   const [error, setError] = useState(null);
+  const socket = getSocket();
 
   useEffect(() => {
     const loadGlassMasterData = () => {
@@ -73,69 +75,227 @@ const AddGlassStock = ({ isOpen, onClose, initialSearchTerm = "", glassDetails, 
     )
   );
 
+
   const handleStockChange = (dataCode, value) => {
-    const cleanValue = value.replace(/[^+\-0-9]/g, '');
+    const cleanValue = value.replace(/[^-0-9]/g, '');
     setStockUpdates(prev => ({
       ...prev,
       [dataCode]: cleanValue
     }));
-    // Clear any previous error when user starts typing
+
     if (error) setError(null);
   };
 
   const calculateNewStock = (currentStock, updateValue) => {
-    if (!updateValue || updateValue === '') {
-      return currentStock || 0;
-    }
-
-    const cleanValue = updateValue.toString().trim();
+    if (!updateValue || updateValue === "") return currentStock || 0;
     const currentStockNum = Number(currentStock) || 0;
+    const adjustment = parseInt(updateValue, 10);
 
-    if (!cleanValue.startsWith('+') && !cleanValue.startsWith('-')) {
-      const parsed = parseInt(cleanValue, 10);
-      return isNaN(parsed) ? currentStockNum : parsed;
-    }
-
-    if (cleanValue.startsWith('+')) {
-      const adjustment = parseInt(cleanValue.substring(1), 10);
-      if (isNaN(adjustment)) return currentStockNum;
+    if (isNaN(adjustment)) return currentStockNum;
+    if (adjustment < 0) {
       return Math.max(0, currentStockNum + adjustment);
     }
-
-    if (cleanValue.startsWith('-')) {
-      const adjustment = parseInt(cleanValue.substring(1), 10);
-      if (isNaN(adjustment)) return currentStockNum;
-      return Math.max(0, currentStockNum - adjustment);
-    }
-
-    return currentStockNum;
+    return currentStockNum + adjustment;
   };
 
+  const getAdjustmentDisplay = (glass) => {
+    const updateValue = stockUpdates[glass.data_code];
+    if (!updateValue || updateValue === "-") return null;
+
+    const adjustment = parseInt(updateValue, 10);
+    if (isNaN(adjustment)) return null;
+
+    return {
+      adjustment,
+      isAbsolute: false,
+      color: adjustment > 0 ? 'text-green-600' : adjustment < 0 ? 'text-red-600' : 'text-gray-600'
+    };
+  };
+
+  // const updateStock = async (glass) => {
+  //   const updateValue = stockUpdates[glass.data_code];
+  //   if (!updateValue || updateValue === '' || updateValue === '-') {
+  //     return;
+  //   }
+
+  //   const adjustment = parseInt(updateValue, 10);
+  //   if (isNaN(adjustment)) return;
+
+  //   const currentStock = glass.available_stock || 0;
+  //   const newStock = calculateNewStock(currentStock, updateValue);
+
+  //   setUpdateLoading(prev => ({ ...prev, [glass.data_code]: true }));
+
+  //   try {
+  //     const response = await fetch(`https://doms-k1fi.onrender.com/api/masters/glass/stock/adjust/${glass.data_code}`, {
+  //       method: 'PATCH',
+  //       headers: {
+  //         'Content-Type': 'application/json',
+  //       },
+  //       body: JSON.stringify({
+  //         adjustment: adjustment
+  //       })
+  //     });
+
+  //     if (!response.ok) {
+  //       throw new Error(`Failed to update stock: ${response.statusText}`);
+  //     }
+
+  //     const result = await response.json();
+  //     console.log('API response:', result);
+
+  //     const updatedData = glassMasterData.map(g =>
+  //       g.data_code === glass.data_code
+  //         ? { ...g, available_stock: newStock }
+  //         : g
+  //     );
+
+  //     setGlassMasterData(updatedData);
+
+  //     localStorage.setItem("glassMaster", JSON.stringify(updatedData));
+
+  //     if (onStockUpdate) {
+  //       console.log('AddGlassStock: Calling onStockUpdate with updated data');
+  //       onStockUpdate(updatedData);
+  //     }
+
+  //     setStockUpdates(prev => {
+  //       const newUpdates = { ...prev };
+  //       delete newUpdates[glass.data_code];
+  //       return newUpdates;
+  //     });
+
+  //     setSuccessMessages(prev => ({
+  //       ...prev,
+  //       [glass.data_code]: `Stock updated to ${newStock}`
+  //     }));
+
+  //     setTimeout(() => {
+  //       setSuccessMessages(prev => {
+  //         const newMessages = { ...prev };
+  //         delete newMessages[glass.data_code];
+  //         return newMessages;
+  //       });
+  //     }, 3000);
+
+  //   } catch (error) {
+  //     console.error('Error updating stock:', error);
+  //     alert(`Error updating stock: ${error.message}`);
+  //   } finally {
+  //     setUpdateLoading(prev => {
+  //       const newLoading = { ...prev };
+  //       delete newLoading[glass.data_code];
+  //       return newLoading;
+  //     });
+  //   }
+  // };
   const calculateAdjustment = (currentStock, updateValue) => {
-    if (!updateValue || updateValue === '') {
-      return 0;
-    }
+    if (!updateValue || updateValue === "") return 0;
 
     const cleanValue = updateValue.toString().trim();
-    const currentStockNum = Number(currentStock) || 0;
+    const parsed = parseInt(cleanValue, 10);
 
-    if (!cleanValue.startsWith('+') && !cleanValue.startsWith('-')) {
-      const parsed = parseInt(cleanValue, 10);
-      if (isNaN(parsed)) return 0;
-      return parsed - currentStockNum;
+    if (isNaN(parsed)) return 0;
+
+    return parsed;
+  };
+
+
+  const updateStock = (glass) => {
+    const updateValue = stockUpdates[glass.data_code];
+    if (!updateValue || updateValue === "+" || updateValue === "-") {
+      setError("Please enter a valid stock update value");
+      return;
+    }
+    const currentStock = glass.available_stock || 0;
+    const adjustment = calculateAdjustment(currentStock, updateValue);
+    const newStock = calculateNewStock(currentStock, updateValue);
+
+    if (newStock < 0) {
+      setError("Stock cannot be negative");
+      return;
     }
 
-    if (cleanValue.startsWith('+')) {
-      const adjustment = parseInt(cleanValue.substring(1), 10);
-      return isNaN(adjustment) ? 0 : adjustment;
-    }
+    setUpdateLoading((prev) => ({ ...prev, [glass.data_code]: true }));
+    setError("");
 
-    if (cleanValue.startsWith('-')) {
-      const adjustment = parseInt(cleanValue.substring(1), 10);
-      return isNaN(adjustment) ? 0 : -adjustment;
-    }
+    try {
+      socket.emit("updateGlassStock", { data_code: glass.data_code, adjustment });
+      socket.off("glassStockUpdatedSelf");
+      socket.off("errorMessage");
 
-    return 0;
+      socket.on("glassStockUpdatedSelf", ({ data_code, newStock }) => {
+        console.log("Glass stock updated:", data_code, newStock);
+        setUpdateLoading((prev) => {
+          const newLoading = { ...prev };
+          delete newLoading[data_code];
+          return newLoading;
+        });
+
+        const updatedData = glassMasterData.map((g) =>
+          g.data_code === data_code ? { ...g, available_stock: newStock } : g
+        );
+
+        setGlassMasterData(updatedData);
+        localStorage.setItem("glassMaster", JSON.stringify(updatedData));
+
+        if (onStockUpdate) {
+          onStockUpdate(updatedData);
+        }
+
+        window.dispatchEvent(
+          new CustomEvent("glassMasterUpdated", {
+            detail: { updatedData, dataCode: data_code, newStock },
+          })
+        );
+
+        setStockUpdates((prev) => {
+          const newUpdates = { ...prev };
+          delete newUpdates[data_code];
+          return newUpdates;
+        });
+
+        setSuccessMessages((prev) => ({
+          ...prev,
+          [data_code]: `Stock updated to ${newStock}`,
+        }));
+
+        setTimeout(() => {
+          setSuccessMessages((prev) => {
+            const newMessages = { ...prev };
+            delete newMessages[data_code];
+            return newMessages;
+          });
+
+          if (glassDetails && filteredGlasses.length === 1) {
+            onClose?.();
+          }
+        }, 2000);
+
+        socket.off("glassStockUpdatedSelf");
+        socket.off("errorMessage");
+      });
+
+      socket.on("errorMessage", ({ message }) => {
+        setError(`Error updating stock: ${message}`);
+        setUpdateLoading((prev) => {
+          const newLoading = { ...prev };
+          delete newLoading[glass.data_code];
+          return newLoading;
+        });
+
+        socket.off("glassStockUpdatedSelf");
+        socket.off("errorMessage");
+      });
+    } catch (error) {
+      console.error("Error updating stock:", error);
+      setError(`Error updating stock: ${error.message}`);
+      setUpdateLoading((prev) => {
+        const newLoading = { ...prev };
+        delete newLoading[glass.data_code];
+        return newLoading;
+      });
+    }
   };
 
   const ProgressBar = ({ current, preview, total = 1000 }) => {
@@ -166,83 +326,6 @@ const AddGlassStock = ({ isOpen, onClose, initialSearchTerm = "", glassDetails, 
     );
   };
 
-  const updateStock = async (glass) => {
-    const updateValue = stockUpdates[glass.data_code];
-    if (!updateValue || updateValue === '' || updateValue === '+' || updateValue === '-') {
-      return;
-    }
-
-    const currentStock = glass.available_stock || 0;
-    const adjustment = calculateAdjustment(currentStock, updateValue);
-    const newStock = calculateNewStock(currentStock, updateValue);
-
-    setUpdateLoading(prev => ({ ...prev, [glass.data_code]: true }));
-
-    try {
-      const response = await fetch(`https://doms-k1fi.onrender.com/api/masters/glass/stock/adjust/${glass.data_code}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          adjustment: adjustment
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to update stock: ${response.statusText}`);
-      }
-
-      const result = await response.json();
-      console.log('API response:', result);
-
-      // Update local state
-      const updatedData = glassMasterData.map(g =>
-        g.data_code === glass.data_code
-          ? { ...g, available_stock: newStock }
-          : g
-      );
-
-      setGlassMasterData(updatedData);
-      
-      localStorage.setItem("glassMaster", JSON.stringify(updatedData));
-      
-      if (onStockUpdate) {
-        console.log('AddGlassStock: Calling onStockUpdate with updated data');
-        onStockUpdate(updatedData);
-      }
-
-      setStockUpdates(prev => {
-        const newUpdates = { ...prev };
-        delete newUpdates[glass.data_code];
-        return newUpdates;
-      });
-
-      setSuccessMessages(prev => ({
-        ...prev,
-        [glass.data_code]: `Stock updated to ${newStock}`
-      }));
-
-      setTimeout(() => {
-        setSuccessMessages(prev => {
-          const newMessages = { ...prev };
-          delete newMessages[glass.data_code];
-          return newMessages;
-        });
-      }, 3000);
-
-    } catch (error) {
-      console.error('Error updating stock:', error);
-      alert(`Error updating stock: ${error.message}`);
-    } finally {
-      setUpdateLoading(prev => {
-        const newLoading = { ...prev };
-        delete newLoading[glass.data_code];
-        return newLoading;
-      });
-    }
-  };
-
   const getPreviewStock = (glass) => {
     const updateValue = stockUpdates[glass.data_code];
     if (!updateValue || updateValue === '' || updateValue === '+' || updateValue === '-') {
@@ -251,23 +334,6 @@ const AddGlassStock = ({ isOpen, onClose, initialSearchTerm = "", glassDetails, 
     return calculateNewStock(glass.available_stock, updateValue);
   };
 
-  const getAdjustmentDisplay = (glass) => {
-    const updateValue = stockUpdates[glass.data_code];
-    if (!updateValue || updateValue === '' || updateValue === '+' || updateValue === '-') {
-      return null;
-    }
-
-    const adjustment = calculateAdjustment(glass.available_stock, updateValue);
-    const isPositive = adjustment > 0;
-    const isAbsolute = !updateValue.startsWith('+') && !updateValue.startsWith('-');
-
-    return {
-      adjustment,
-      isPositive,
-      isAbsolute,
-      color: isPositive ? 'text-emerald-600' : 'text-red-500'
-    };
-  };
 
   return (
     <Dialog open={isOpen} onClose={onClose} className="relative z-50">
@@ -473,8 +539,8 @@ const AddGlassStock = ({ isOpen, onClose, initialSearchTerm = "", glassDetails, 
                                     updateLoading[glass.data_code] ||
                                     !stockUpdates[glass.data_code] ||
                                     stockUpdates[glass.data_code] === '' ||
-                                    stockUpdates[glass.data_code] === '+' ||
-                                    stockUpdates[glass.data_code] === '-'
+                                    stockUpdates[glass.data_code] === '-' ||
+                                    isNaN(parseInt(stockUpdates[glass.data_code], 10))
                                   }
                                   className="w-full inline-flex items-center justify-center px-3 py-1 text-sm font-medium text-white bg-orange-600 border border-transparent rounded hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-orange-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                                 >

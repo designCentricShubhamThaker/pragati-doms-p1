@@ -4,24 +4,24 @@ import StockAvailabilityDialog from './components/StockAvailabilityDialog.jsx';
 import OrderTable from "./components/OrderTable.jsx";
 import UpdateBottleQty from './components/UpdateBottleQty.jsx';
 import TeamSearchAggregation from '../../utils/TeamSearchAggregation.jsx';
-import { getLocalStorageData, getStorageKey, initializeLocalStorage, filterOrdersByType, updateOrderInStorage } from '../../utils/orderStorage.jsx';
+import { getLocalStorageData, getStorageKey, initializeLocalStorage, getOrdersByStatus } from '../../utils/orderStorage.jsx';
 import AddGlassStock from './components/AddGlassStock.jsx';
 import Pagination from '../../utils/Pagination.jsx';
 import AddVehicleDetails from './components/AddVehicleDetails.jsx';
 
-const GlassOrders = ({ 
-  orderType = 'in_progress', 
-  globalState, 
-  onOrderUpdate, 
-  onStockUpdate, 
-  onOrdersUpdate 
+const GlassOrders = ({
+  orderType = 'in_progress',
+  globalState,
+  onOrderUpdate,
+  onStockUpdate,
+  onOrdersUpdate
 }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [expandedRows, setExpandedRows] = useState(new Set());
   const [searchTerm, setSearchTerm] = useState('');
-  
+
   // Modal states
   const [showModal, setShowModal] = useState(false);
   const [showVehicleDetails, setShowVehicleDetails] = useState(false);
@@ -36,7 +36,8 @@ const GlassOrders = ({
   const TEAM = 'glass';
   const STORAGE_KEY = getStorageKey(TEAM);
 
-  const { allProducts, allOrders, glassMasterReady, dataVersion } = globalState;
+  const { allProducts, orders, glassMasterReady, dataVersion } = globalState;
+  const currentOrders = orders || [];
 
   const FilterGlassOrders = useCallback((items) => {
     return items.filter(item =>
@@ -45,10 +46,6 @@ const GlassOrders = ({
     );
   }, []);
 
-  // Filter orders by type from all orders
-  const currentOrders = useMemo(() => {
-    return filterOrdersByType(allOrders, orderType, TEAM);
-  }, [allOrders, orderType, TEAM]);
 
   const getRemainingQty = useCallback((component) => {
     if (!component || !component.qty) return 'N/A';
@@ -61,7 +58,7 @@ const GlassOrders = ({
     return Math.max(0, remaining);
   }, []);
 
-  // Update glassLookupMap to use the global allProducts
+
   const glassLookupMap = useMemo(() => {
     if (!glassMasterReady || allProducts.length === 0) {
       return new Map();
@@ -81,44 +78,59 @@ const GlassOrders = ({
     return glassLookupMap.get(key) ?? 0;
   }, [glassLookupMap, glassMasterReady, allProducts.length]);
 
-  const initializeOrderData = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
 
-      let ordersToLoad = [];
-      const cachedData = getLocalStorageData(STORAGE_KEY);
-
-      if (cachedData && Array.isArray(cachedData)) {
-        ordersToLoad = cachedData.filter(order => order.order_status !== "PENDING_PI");
-        console.log('Using cached orders data');
-      } else {
-        console.log('No cached data, fetching fresh orders');
-        const freshOrders = await initializeLocalStorage(TEAM, FilterGlassOrders);
-        ordersToLoad = freshOrders.filter(order => order.order_status !== "PENDING_PI");
-      }
-
-      onOrdersUpdate(ordersToLoad);
-    } catch (err) {
-      setError(err.message);
-      console.error("Error in order initialization:", err);
-    } finally {
-      setLoading(false);
-    }
-  }, [STORAGE_KEY, TEAM, FilterGlassOrders, onOrdersUpdate]);
-
-  // Load orders when component mounts
   useEffect(() => {
-    if (glassMasterReady && allOrders.length === 0) {
-      initializeOrderData();
-    }
-  }, [glassMasterReady, allOrders.length, initializeOrderData]);
+    const loadOrders = async () => {
+      try {
+        setLoading(true);
+        setError(null);
 
-  // Aggregated glass data - memoized based on currentOrders and dataVersion
+        let ordersToLoad = [];
+
+        const allStoredOrders = getLocalStorageData(STORAGE_KEY);
+
+        if (allStoredOrders && allStoredOrders.length > 0) {
+          ordersToLoad = getOrdersByStatus(TEAM, orderType);
+          if (orderType === "in_progress") {
+            ordersToLoad = ordersToLoad.filter(order => order.order_status !== "PENDING_PI");
+          }
+        } else {
+          const initialized = await initializeLocalStorage(TEAM, FilterGlassOrders);
+
+          console.log(initialized, "init")
+          if (orderType === "in_progress") {
+            ordersToLoad = (initialized.inProgressOrders || []).filter(
+              order => order.order_status !== "PENDING_PI"
+            );
+          } else if (orderType === "ready_to_dispatch") {
+            ordersToLoad = initialized.readyToDispatchOrders || [];
+          } else if (orderType === "dispatched") {
+            ordersToLoad = initialized.dispatchedOrders || [];
+          }
+        }
+
+        console.log(ordersToLoad,"Loading");
+        onOrdersUpdate(ordersToLoad);
+      } catch (err) {
+        setError(err.message);
+        console.error("Error in PumpOrders init:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadOrders();
+  }, [orderType, onOrdersUpdate]);
+
   const aggregatedglasss = useMemo(() => {
+    console.log('Recalculating aggregated glasses data');
+    console.log('Current orders:', currentOrders);
+    console.log('Glass master ready:', glassMasterReady);
+
     if (!glassMasterReady || currentOrders.length === 0) {
       return {};
     }
+
     const glassMap = {};
 
     currentOrders.forEach(order => {
@@ -152,54 +164,66 @@ const GlassOrders = ({
               remaining: remaining,
               status: glass.status,
               customer_name: order.customer_name,
-              manager_name: order.manager_name
+              manager_name: order.manager_name,
+              completed_qty: glass.completed_qty || 0, // Add this to track progress
+              item_id: item.item_id, // Add this for better tracking
+              component_id: glass.component_id // Add this for better tracking
             });
           }
         });
       });
     });
 
+    console.log('Aggregated glasses result:', glassMap);
     return glassMap;
-  }, [currentOrders, getAvailableStock, getRemainingQty, glassMasterReady, dataVersion]);
+  }, [
+    currentOrders,
+    getAvailableStock,
+    getRemainingQty,
+    glassMasterReady,
+    dataVersion,
+    expandedRows.size //
+  ]);
 
   // Filtered orders based on search
-  const filteredOrders = useMemo(() => {
-    if (!searchTerm.trim()) return currentOrders;
+const filteredOrders = useMemo(() => {
+  if (!searchTerm.trim()) return Array.isArray(currentOrders) ? currentOrders : [];
 
-    const searchLower = searchTerm.toLowerCase();
-    return currentOrders
-      .map(order => {
-        if (
-          order.order_number?.toLowerCase().includes(searchLower) ||
-          order.customer_name?.toLowerCase().includes(searchLower) ||
-          order.manager_name?.toLowerCase().includes(searchLower)
-        ) {
-          return order;
-        }
+  const searchLower = searchTerm.toLowerCase();
+  let results = [];
 
-        const filteredItems = order.items
-          ?.map(item => {
-            if (item.item_name?.toLowerCase().includes(searchLower)) {
-              return item;
-            }
+  currentOrders?.forEach(order => {
+    if (
+      order.order_number?.toLowerCase().includes(searchLower) ||
+      order.customer_name?.toLowerCase().includes(searchLower) ||
+      order.manager_name?.toLowerCase().includes(searchLower)
+    ) {
+      results.push(order);
+      return;
+    }
 
-            const filteredComponents = item.components?.filter(component =>
-              component.name?.toLowerCase().includes(searchLower)
-            ) || [];
+    order.items?.forEach(item => {
+      if (item.item_name?.toLowerCase().includes(searchLower)) {
+        results.push({ ...order, items: [item] });
+        return;
+      }
 
-            if (filteredComponents.length > 0) {
-              return { ...item, components: filteredComponents };
-            }
-            return null;
-          })
-          .filter(Boolean) || [];
+      const matchedComponents = item.components?.filter(c =>
+        c.name?.toLowerCase().includes(searchLower)
+      ) || [];
 
-        return filteredItems.length > 0 ? { ...order, items: filteredItems } : null;
-      })
-      .filter(Boolean);
-  }, [currentOrders, searchTerm]);
+      if (matchedComponents.length > 0) {
+        results.push({
+          ...order,
+          items: [{ ...item, components: matchedComponents }]
+        });
+      }
+    });
+  });
 
-  // Paginated orders
+  return results;
+}, [currentOrders, searchTerm]);
+
   const paginatedOrders = useMemo(() => {
     const indexOfLastOrder = currentPage * ordersPerPage;
     const indexOfFirstOrder = indexOfLastOrder - ordersPerPage;
@@ -208,7 +232,7 @@ const GlassOrders = ({
 
   const totalPages = Math.ceil(filteredOrders.length / ordersPerPage);
 
-  // UI Helper functions
+
   const getStatusStyle = useCallback((status) => {
     if (!status) return 'text-gray-500';
     const normalizedStatus = status.toString().toUpperCase();
@@ -234,7 +258,7 @@ const GlassOrders = ({
       .replace(/\b\w/g, (c) => c.toUpperCase());
   }, []);
 
-  // Event Handlers
+
   const handleAddStock = useCallback((glassDetails) => {
     setSearchTerm(glassDetails.name);
     setCurrentPage(1);
@@ -316,17 +340,24 @@ const GlassOrders = ({
     setSearchTerm(managerName);
     setCurrentPage(1);
   }, []);
+   const refreshOrders = useCallback(() => {
+    const ordersToLoad = getOrdersByStatus(TEAM, orderType);
 
-  // Main order update handler - updates localStorage and calls parent
-  const handleLocalOrderUpdate = useCallback((updatedOrder) => {
-    // Update localStorage
-    updateOrderInStorage(TEAM, updatedOrder);
-    
-    // Update parent state
-    onOrderUpdate(updatedOrder);
-    
+    if (orderType === "in_progress") {
+      const filteredOrders = ordersToLoad.filter(order => order.order_status !== "PENDING_PI");
+      onOrdersUpdate(filteredOrders);
+    } else {
+      onOrdersUpdate(ordersToLoad);
+    }
+  }, [orderType, onOrdersUpdate, TEAM]);
+
+
+  const handleLocalOrderUpdate = useCallback((orderNumber ,item_id ,component_id , updatedComponent ,newStatus) => {
+    onOrderUpdate(orderNumber ,item_id ,component_id , updatedComponent ,newStatus);
+    refreshOrders();
     handleClose();
-  }, [TEAM, onOrderUpdate, handleClose]);
+  }, [onOrderUpdate, refreshOrders, handleClose]);
+
 
   const handleDispatch = useCallback((order, item, component) => {
     setSelectedOrder(order);
@@ -334,7 +365,7 @@ const GlassOrders = ({
     setShowVehicleDetails(true);
   }, []);
 
-  // Loading states
+
   if (!glassMasterReady) {
     return (
       <div className="flex items-center justify-center py-16">
@@ -430,7 +461,7 @@ const GlassOrders = ({
           aggregatedBottles={aggregatedglasss}
           searchTerm={searchTerm}
           getAvailableStock={getAvailableStock}
-          onStockUpdate={onStockUpdate} 
+          onStockUpdate={onStockUpdate}
         />
       )}
 

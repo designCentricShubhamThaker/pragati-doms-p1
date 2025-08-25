@@ -59,11 +59,11 @@ const TeamSearchAggregation = ({
   };
 }, []);
 
-  useEffect(() => {
-    if (Object.keys(aggregatedItems).length > 0) {
-      loadGlassMasterData();
-    }
-  }, [aggregatedItems]);
+  // useEffect(() => {
+  //   if (Object.keys(aggregatedItems).length > 0) {
+  //     loadGlassMasterData();
+  //   }
+  // }, [aggregatedItems]);
 
   const searchResults = useMemo(() => {
     if (!searchTerm.trim()) return [];

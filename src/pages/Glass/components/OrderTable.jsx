@@ -1,7 +1,8 @@
 import React from 'react';
-import { Package, Edit, Eye, EyeOff } from 'lucide-react';
-import { FaTruckArrowRight } from "react-icons/fa6";
+import { Package, Edit, Eye, EyeOff } from 'lucide-react'
 import { FaTruckRampBox } from "react-icons/fa6";
+import { BsFillCartCheckFill } from "react-icons/bs"
+import { AiOutlineRollback } from "react-icons/ai";
 
 
 const OrderTable = ({
@@ -15,7 +16,9 @@ const OrderTable = ({
   expandedRows,
   toggleRowExpansion,
   getStatusStyle,
+  handleVehicleDetails,
   handleDispatch,
+  handleRollback,
   formatStatusLabel,
   getAvailableStock,
 }) => {
@@ -48,7 +51,7 @@ function sumTrackingKey(tracking, key) {
     <div className="space-y-4">
       <div className="hidden xl:block">
         <div className="bg-gradient-to-r from-orange-800 via-orange-600 to-orange-400 rounded-lg shadow-md py-3 px-4 mb-3">
-          <div className={`grid ${orderType === 'ready_to_dispatch' ? 'grid-cols-23' : 'grid-cols-22'} gap-1 text-white font-semibold text-xs items-center`}>
+          <div className={`grid ${orderType === 'ready_to_dispatch' ? 'grid-cols-25' : 'grid-cols-22'} gap-1 text-white font-semibold text-xs items-center`}>
             <div className="text-left col-span-2">Order #</div>
             <div className="text-left col-span-2">Manager</div>
             <div className="text-left col-span-2">Customer</div>
@@ -67,8 +70,15 @@ function sumTrackingKey(tracking, key) {
             <div className="text-center">Produced</div>
             <div className="text-center">Edit</div>
             {orderType === 'ready_to_dispatch' && (
+              <div className="text-center">Veh Info</div>
+            )}
+             {orderType === 'ready_to_dispatch' && (
+              <div className="text-center">Rollback</div>
+            )}
+            {orderType === 'ready_to_dispatch' && (
               <div className="text-center">Dispatch</div>
             )}
+           
           </div>
         </div>
 
@@ -104,7 +114,7 @@ function sumTrackingKey(tracking, key) {
                   return (
                     <div
                       key={`${order.order_number}-${item.item_name}-${glass?.name || "empty"}-${glassIndex}`}
-                      className={`grid ${orderType === 'ready_to_dispatch' ? 'grid-cols-23' : 'grid-cols-22'} gap-1 items-center py-2 px-3 text-xs ${bgColor}`}
+                      className={`grid ${orderType === 'ready_to_dispatch' ? 'grid-cols-25' : 'grid-cols-22'} gap-1 items-center py-2 px-3 text-xs ${bgColor}`}
                     >
                       <div className="text-left col-span-2">
                         {isFirstRowOfOrder ? (
@@ -239,13 +249,34 @@ function sumTrackingKey(tracking, key) {
                       {orderType === 'ready_to_dispatch' && isFirstRowOfItem && (
                         <div className="text-center">
                           <button
-                            onClick={() => handleDispatch(order, item, glass)}
+                            onClick={() => handleVehicleDetails(order, item, glass)}
                             className="p-1.5 bg-orange-600 rounded text-white hover:bg-orange-500"
                           >
                             <FaTruckRampBox   size={14} />
                           </button >
                         </div>
                       )}
+                      {orderType === 'ready_to_dispatch' && isFirstRowOfItem && (
+                        <div className="text-center">
+                          <button
+                            onClick={() => handleRollback(order, item, glass)}
+                            className="p-1.5 bg-orange-600 rounded text-white hover:bg-orange-500"
+                          >
+                            <AiOutlineRollback    size={14} />
+                          </button >
+                        </div>
+                      )}
+                      {orderType === 'ready_to_dispatch' && isFirstRowOfItem && (
+                        <div className="text-center">
+                          <button
+                            onClick={() => handleDispatch(order, item, glass)}
+                            className="p-1.5 bg-orange-600 rounded text-white hover:bg-orange-500"
+                          >
+                            <BsFillCartCheckFill   size={14} />
+                          </button >
+                        </div>
+                      )}
+                      
                     </div>
                   );
                 });

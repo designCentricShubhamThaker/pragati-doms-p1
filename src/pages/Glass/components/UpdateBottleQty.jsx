@@ -534,7 +534,7 @@ const handleSave = async () => {
                             <div className="space-y-2">
                               <input
                                 type="number"
-                                min={stockUsed}
+                                // min={stockUsed}
                                 max={remaining + stockUsed}
                                 value={assignment.todayQty === null ? stockUsed : assignment.todayQty}
                                 onChange={(e) => handleQuantityChange(index, e.target.value)}

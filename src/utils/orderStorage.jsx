@@ -4,8 +4,7 @@ export const getLocalStorageData = (key) => {
   try {
     const data = localStorage.getItem(key);
     return data ? JSON.parse(data) : null;
-  } catch (error) {
-    console.error(`Error reading from localStorage (${key}):`, error);
+  } catch {
     return null;
   }
 };
@@ -13,8 +12,8 @@ export const getLocalStorageData = (key) => {
 export const setLocalStorageData = (key, data) => {
   try {
     localStorage.setItem(key, JSON.stringify(data));
-  } catch (error) {
-    console.error(`Error saving to localStorage (${key}):`, error);
+  } catch {
+    // Fail silently
   }
 };
 
@@ -34,40 +33,27 @@ export const splitOrdersByStatus = (orders, isOrderCompletedFn) => {
 };
 
 export const splitOrdersByTeamStatus = (orders, team) => {
-  console.log("🔍 splitOrdersByTeamStatus called");
-  console.log("📦 Orders received:", orders);
-  console.log("👥 Team filter:", team);
-
   const inProgressOrders = [];
   const readyToDispatchOrders = [];
   const dispatchedOrders = [];
 
-  orders.forEach((order, orderIndex) => {
-    console.log(`\n➡️ Processing Order #${orderIndex + 1}:`, order.order_number);
-
+  orders.forEach(order => {
     const inProgressItems = [];
     const readyToDispatchItems = [];
     const dispatchedItems = [];
 
-    order.items.forEach((item, itemIndex) => {
-      console.log(`  🛠 Item #${itemIndex + 1}:`, item.item_name);
-
+    order.items.forEach(item => {
       const inProgressComponents = [];
       const readyToDispatchComponents = [];
       const dispatchedComponents = [];
 
-      item.components.forEach((component, compIndex) => {
-        console.log(`    🔹 Component #${compIndex + 1}:`, component.name, "| Type:", component.component_type, "| Status:", component.status);
-
+      item.components.forEach(component => {
         if (component.component_type === team) {
           if (component.status === "IN_PROGRESS" || component.status === "PENDING") {
-            console.log("      ✅ Added to IN_PROGRESS");
             inProgressComponents.push(component);
           } else if (component.status === "READY_TO_DISPATCH") {
-            console.log("      📦 Added to READY_TO_DISPATCH");
             readyToDispatchComponents.push(component);
           } else if (component.status === "DISPATCHED") {
-            console.log("      🚚 Added to DISPATCHED");
             dispatchedComponents.push(component);
           }
         }
@@ -85,15 +71,12 @@ export const splitOrdersByTeamStatus = (orders, team) => {
     });
 
     if (inProgressItems.length > 0) {
-      console.log("  ➕ Order added to IN_PROGRESS");
       inProgressOrders.push({ ...order, items: inProgressItems });
     }
     if (readyToDispatchItems.length > 0) {
-      console.log("  ➕ Order added to READY_TO_DISPATCH");
       readyToDispatchOrders.push({ ...order, items: readyToDispatchItems });
     }
     if (dispatchedItems.length > 0) {
-      console.log("  ➕ Order added to DISPATCHED");
       dispatchedOrders.push({ ...order, items: dispatchedItems });
     }
   });
@@ -121,7 +104,6 @@ export const getOrdersByStatus = (team, status) => {
       )
     );
   }).map(order => {
-
     const filteredItems = order.items?.map(item => {
       const relevantComponents = item.components?.filter(component => 
         component.component_type === team && 
@@ -185,8 +167,6 @@ export const initializeLocalStorage = async (team, filterOrderFn) => {
     if (!response.ok) throw new Error('Failed to fetch orders');
     const allOrders = await response.json() || [];
     
-    console.log(allOrders, "ALL ORDERS");
-    
     const filteredOrders = allOrders
       .map(order => {
         const filteredItems = filterOrderFn(order.items || []);
@@ -195,7 +175,6 @@ export const initializeLocalStorage = async (team, filterOrderFn) => {
       .filter(order => order !== null);
     
     setLocalStorageData(storageKey, filteredOrders);
-    
 
     const {
       inProgressOrders,
@@ -210,7 +189,6 @@ export const initializeLocalStorage = async (team, filterOrderFn) => {
       dispatchedOrders
     };
   } catch (error) {
-    console.error('Error initializing localStorage:', error);
     throw error;
   }
 };
@@ -220,14 +198,12 @@ export const getAllOrdersForTeam = (team) => {
   return getLocalStorageData(storageKey) || [];
 };
 
-
- export const updateOrderInLocalStorage = (team ,updatedOrder) => {
+export const updateOrderInLocalStorage = (team, updatedOrder) => {
   try {
     const storageKey = getStorageKey(team);
     const stored = getLocalStorageData(storageKey);
     if (!stored) return;
 
-    console.log(stored,"stored")
     const allOrders = stored;
 
     const orderIndex = allOrders.findIndex(
@@ -235,13 +211,11 @@ export const getAllOrdersForTeam = (team) => {
     );
 
     if (orderIndex === -1) {
-      console.warn("Order not found in localStorage");
       return;
     }
 
     const currentOrder = allOrders[orderIndex];
 
-    // Merge deeply only updated fields
     const mergedOrder = {
       ...currentOrder,
       ...updatedOrder,
@@ -261,11 +235,8 @@ export const getAllOrdersForTeam = (team) => {
     };
 
     allOrders[orderIndex] = mergedOrder;
-    console.log(allOrders,"allOrder")
-    setLocalStorageData(storageKey,allOrders);
-
-    console.log("Order updated in localStorage:", mergedOrder);
-  } catch (err) {
-    console.error("Failed to update localStorage order", err);
+    setLocalStorageData(storageKey, allOrders);
+  } catch {
+    // Fail silently
   }
 };

@@ -8,6 +8,8 @@ import { getLocalStorageData, getStorageKey, initializeLocalStorage, getOrdersBy
 import AddGlassStock from './components/AddGlassStock.jsx';
 import Pagination from '../../utils/Pagination.jsx';
 import AddVehicleDetails from './components/AddVehicleDetails.jsx';
+import DispatchOrders from './components/DispatchOrders.jsx';
+import Rollback from './components/Rollback.jsx';
 
 const GlassOrders = ({
   orderType = 'in_progress',
@@ -31,6 +33,8 @@ const GlassOrders = ({
   const [stockQuantities, setStockQuantities] = useState({});
   const [showAddStockModal, setShowAddStockModal] = useState(false);
   const [addStockGlassDetails, setAddStockGlassDetails] = useState(null);
+  const [dispatchOrder, setDispatchOrder] = useState(false)
+  const [rollback,setRollback] = useState(false)
 
   const ordersPerPage = 5;
   const TEAM = 'glass';
@@ -97,7 +101,6 @@ const GlassOrders = ({
         } else {
           const initialized = await initializeLocalStorage(TEAM, FilterGlassOrders);
 
-          console.log(initialized, "init")
           if (orderType === "in_progress") {
             ordersToLoad = (initialized.inProgressOrders || []).filter(
               order => order.order_status !== "PENDING_PI"
@@ -109,23 +112,20 @@ const GlassOrders = ({
           }
         }
 
-        console.log(ordersToLoad,"Loading");
-        onOrdersUpdate(ordersToLoad);
+        if (JSON.stringify(ordersToLoad) !== JSON.stringify(currentOrders)) {
+          onOrdersUpdate(ordersToLoad);
+        }
       } catch (err) {
         setError(err.message);
-        console.error("Error in PumpOrders init:", err);
       } finally {
         setLoading(false);
       }
     };
 
     loadOrders();
-  }, [orderType, onOrdersUpdate]);
+  }, [orderType, onOrdersUpdate, currentOrders]);
 
   const aggregatedglasss = useMemo(() => {
-    console.log('Recalculating aggregated glasses data');
-    console.log('Current orders:', currentOrders);
-    console.log('Glass master ready:', glassMasterReady);
 
     if (!glassMasterReady || currentOrders.length === 0) {
       return {};
@@ -174,7 +174,6 @@ const GlassOrders = ({
       });
     });
 
-    console.log('Aggregated glasses result:', glassMap);
     return glassMap;
   }, [
     currentOrders,
@@ -186,43 +185,43 @@ const GlassOrders = ({
   ]);
 
   // Filtered orders based on search
-const filteredOrders = useMemo(() => {
-  if (!searchTerm.trim()) return Array.isArray(currentOrders) ? currentOrders : [];
+  const filteredOrders = useMemo(() => {
+    if (!searchTerm.trim()) return Array.isArray(currentOrders) ? currentOrders : [];
 
-  const searchLower = searchTerm.toLowerCase();
-  let results = [];
+    const searchLower = searchTerm.toLowerCase();
+    let results = [];
 
-  currentOrders?.forEach(order => {
-    if (
-      order.order_number?.toLowerCase().includes(searchLower) ||
-      order.customer_name?.toLowerCase().includes(searchLower) ||
-      order.manager_name?.toLowerCase().includes(searchLower)
-    ) {
-      results.push(order);
-      return;
-    }
-
-    order.items?.forEach(item => {
-      if (item.item_name?.toLowerCase().includes(searchLower)) {
-        results.push({ ...order, items: [item] });
+    currentOrders?.forEach(order => {
+      if (
+        order.order_number?.toLowerCase().includes(searchLower) ||
+        order.customer_name?.toLowerCase().includes(searchLower) ||
+        order.manager_name?.toLowerCase().includes(searchLower)
+      ) {
+        results.push(order);
         return;
       }
 
-      const matchedComponents = item.components?.filter(c =>
-        c.name?.toLowerCase().includes(searchLower)
-      ) || [];
+      order.items?.forEach(item => {
+        if (item.item_name?.toLowerCase().includes(searchLower)) {
+          results.push({ ...order, items: [item] });
+          return;
+        }
 
-      if (matchedComponents.length > 0) {
-        results.push({
-          ...order,
-          items: [{ ...item, components: matchedComponents }]
-        });
-      }
+        const matchedComponents = item.components?.filter(c =>
+          c.name?.toLowerCase().includes(searchLower)
+        ) || [];
+
+        if (matchedComponents.length > 0) {
+          results.push({
+            ...order,
+            items: [{ ...item, components: matchedComponents }]
+          });
+        }
+      });
     });
-  });
 
-  return results;
-}, [currentOrders, searchTerm]);
+    return results;
+  }, [currentOrders, searchTerm]);
 
   const paginatedOrders = useMemo(() => {
     const indexOfLastOrder = currentPage * ordersPerPage;
@@ -321,7 +320,9 @@ const filteredOrders = useMemo(() => {
   const handleClose = useCallback(() => {
     setShowModal(false);
     setShowVehicleDetails(false);
+    setDispatchOrder(false)
     setStockQuantities({});
+    setRollback(false)
     setSelectedOrder(null);
     setSelectedItem(null);
   }, []);
@@ -340,7 +341,8 @@ const filteredOrders = useMemo(() => {
     setSearchTerm(managerName);
     setCurrentPage(1);
   }, []);
-   const refreshOrders = useCallback(() => {
+
+  const refreshOrders = useCallback(() => {
     const ordersToLoad = getOrdersByStatus(TEAM, orderType);
 
     if (orderType === "in_progress") {
@@ -352,17 +354,29 @@ const filteredOrders = useMemo(() => {
   }, [orderType, onOrdersUpdate, TEAM]);
 
 
-  const handleLocalOrderUpdate = useCallback((orderNumber ,item_id ,component_id , updatedComponent ,newStatus) => {
-    onOrderUpdate(orderNumber ,item_id ,component_id , updatedComponent ,newStatus);
+  const handleLocalOrderUpdate = useCallback((orderNumber, item_id, component_id, updatedComponent, newStatus) => {
+    onOrderUpdate(orderNumber, item_id, component_id, updatedComponent, newStatus);
     refreshOrders();
     handleClose();
   }, [onOrderUpdate, refreshOrders, handleClose]);
 
 
-  const handleDispatch = useCallback((order, item, component) => {
+  const handleVehicleDetails = useCallback((order, item, component) => {
     setSelectedOrder(order);
     setSelectedItem(item);
     setShowVehicleDetails(true);
+  }, []);
+
+  const handleDispatch = useCallback((order, item, component) => {
+    setSelectedOrder(order);
+    setSelectedItem(item);
+    setDispatchOrder(true);
+  }, []);
+
+  const handleRollback = useCallback((order, item, component) => {
+    setSelectedOrder(order);
+    setSelectedItem(item);
+    setRollback(true);
   }, []);
 
 
@@ -422,8 +436,10 @@ const filteredOrders = useMemo(() => {
         toggleRowExpansion={toggleRowExpansion}
         getStatusStyle={getStatusStyle}
         formatStatusLabel={formatStatusLabel}
-        handleDispatch={handleDispatch}
+        handleVehicleDetails={handleVehicleDetails}
         getAvailableStock={getAvailableStock}
+        handleDispatch={handleDispatch}
+        handleRollback={handleRollback}
       />
 
       <Pagination
@@ -481,7 +497,25 @@ const filteredOrders = useMemo(() => {
           onClose={handleClose}
           orderData={selectedOrder}
           itemData={selectedItem}
-          onConfirm={handleLocalOrderUpdate}
+          onUpdate={handleLocalOrderUpdate}
+        />
+      )}
+      {dispatchOrder && selectedOrder && selectedItem && (
+        <DispatchOrders
+          isOpen={dispatchOrder}
+          onClose={handleClose}
+          orderData={selectedOrder}
+          itemData={selectedItem}
+          onUpdate={handleLocalOrderUpdate}
+        />
+      )}
+      {rollback && selectedOrder && selectedItem && (
+        <Rollback
+          isOpen={rollback}
+          onClose={handleClose}
+          orderData={selectedOrder}
+          itemData={selectedItem}
+          onUpdate={handleLocalOrderUpdate}
         />
       )}
     </div>

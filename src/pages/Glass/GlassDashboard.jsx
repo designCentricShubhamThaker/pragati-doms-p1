@@ -278,6 +278,7 @@ const handleOrderUpdate = useCallback(
   const mainMenuItems = [
     { id: 'liveOrders', label: 'Live Orders' },
     { id: 'ReadyToDispatch', label: 'Ready to Dispatch' },
+    { id: 'dispatched', label: 'Dispatched' },
     { id: 'GlassMaster', label: 'Glass Master' },
   ];
 
@@ -294,6 +295,8 @@ const handleOrderUpdate = useCallback(
         return <GlassOrders orderType='in_progress' {...commonProps} />;
       case 'ReadyToDispatch':
         return <GlassOrders orderType='ready_to_dispatch' {...commonProps} />;
+      case 'dispatched':
+        return <GlassOrders orderType='dispatched' {...commonProps} />;
       case 'GlassMaster':
         return (
           <GlassMaster

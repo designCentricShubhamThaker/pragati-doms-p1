@@ -6,7 +6,7 @@ import LiveOrders from './LiveOrders';
 import CompletedOrders from './CompletedOrders';
 import Analytics from './Analytics';
 import { useCurrentDateTime } from '../../hooks/useCurrentDateTime';
-// import PrintingDashboard from '../Printing/PrintingDashbaord';
+import PrintingDashboard from '../Printing/PrintingDashbaord';
 import GlassDashboard from '../Glass/GlassDashboard';
 
 
@@ -119,12 +119,12 @@ const Dashboard = () => {
             <GlassDashboard isEmbedded={true} />
           </div>
         );
-      // case 'printing':
-      //   return (
-      //     <div className='mt-2'>
-      //       <PrintingDashboard isEmbedded={true} />
-      //     </div>
-      //   );
+      case 'printing':
+        return (
+          <div className='mt-2'>
+            <PrintingDashboard isEmbedded={true} />
+          </div>
+        );
       default:
         return (
           <div className="p-4">

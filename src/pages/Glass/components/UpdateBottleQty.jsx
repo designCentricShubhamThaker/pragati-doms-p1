@@ -5,7 +5,7 @@ import { getLocalStorageData, getStorageKey } from '../../../utils/orderStorage'
 import { getSocket } from '../../../context/SocketContext';
 
 
-const UpdateBottleQty = ({ isOpen, onClose, orderData, itemData, stockQuantities = {}, onUpdate, onStockUpdate }) => {
+const UpdateBottleQty = ({ isOpen, onClose, orderData, itemData, stockQuantities = {}, onUpdate, onStockUpdate,mode = "normal" }) => {
   const [assignments, setAssignments] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -31,19 +31,51 @@ const UpdateBottleQty = ({ isOpen, onClose, orderData, itemData, stockQuantities
     }
   }, [isOpen, itemData, stockQuantities]);
 
-  const handleQuantityChange = (assignmentIndex, value) => {
+  const handleQuantityChange = (assignmentIndex, value, mode = "normal") => {
     const newAssignments = [...assignments];
-    const stockUsed = parseInt(stockQuantities[newAssignments[assignmentIndex].component_id]) || 0;
-    if (value === '') {
-      newAssignments[assignmentIndex].todayQty = stockUsed;
-    } else {
-      const parsed = parseInt(value, 10);
-      newAssignments[assignmentIndex].todayQty = isNaN(parsed) ? stockUsed : Math.max(stockUsed, parsed);
+    const assignment = newAssignments[assignmentIndex];
+
+    const stockUsed = parseInt(stockQuantities[assignment.component_id]) || 0;
+    const total = assignment.qty || 0;
+    const completed = assignment.completed_qty || 0;
+    const remaining = total - completed;
+
+    if (value === "") {
+      // empty state → reset defaults
+      assignment.todayQty = mode === "rollBack" ? "" : stockUsed;
+      setAssignments(newAssignments);
+      return;
     }
+
+    let inputQty = parseInt(value, 10);
+    if (isNaN(inputQty)) inputQty = 0;
+
+    if (mode === "rollBack") {
+      // 🚨 validation
+      if (Math.abs(inputQty) > completed) {
+        setError(`❌ Cannot rollback more than completed (${completed}) units.`);
+        return;
+      }
+      assignment.todayQty = -Math.abs(inputQty);
+
+    } else {
+      // 🟢 normal flow
+      if (inputQty < stockUsed) {
+        setError(`❌ Quantity cannot be less than stock used (${stockUsed}).`);
+        return;
+      }
+      if (inputQty > remaining) {
+        setError(`❌ Quantity cannot exceed remaining (${remaining}) units.`);
+        return;
+      }
+      assignment.todayQty = inputQty;
+    }
+
+    newAssignments[assignmentIndex] = assignment;
     setAssignments(newAssignments);
+    setError(null); // clear error on success
   };
 
-  
 
   const handleNotesChange = (assignmentIndex, value) => {
     const newAssignments = [...assignments];
@@ -98,320 +130,274 @@ const UpdateBottleQty = ({ isOpen, onClose, orderData, itemData, stockQuantities
     return Math.max(total - completed, 0);
   };
 
-  const updateLocalStorageGlassMaster = (dataCode, stockAdjustment) => {
+
+  // const handleSave = async () => {
+  //   try {
+  //     setLoading(true);
+  //     setError(null);
+
+  //     const updates = assignments
+  //       .filter(assignment => assignment.todayQty > 0)
+  //       .map(assignment => {
+  //         const currentCompleted = assignment.completed_qty || 0;
+  //         const stockUsed = stockQuantities[assignment.component_id] || 0;
+  //         const newProduction = Math.max(0, assignment.todayQty - stockUsed);
+  //         const newCompleted = currentCompleted + assignment.todayQty;
+
+  //         return {
+  //           component_data_code: assignment.data_code,
+  //           component_id: assignment.component_id,
+  //           quantity_produced: newProduction,
+  //           stock_used: stockUsed,
+  //           total_completed: newCompleted,
+  //           notes: assignment.notes || '',
+  //           date: new Date().toISOString()
+  //         };
+  //       });
+
+  //     if (updates.length === 0) {
+  //       setError('Please enter quantity for at least one Pump');
+  //       setLoading(false);
+  //       return;
+  //     }
+
+  //     for (let assignment of assignments) {
+  //       const remaining = getRemainingQty(assignment);
+  //       if (assignment.todayQty > remaining) {
+  //         setError(`Quantity for ${assignment.pump_name} exceeds remaining amount (${remaining})`);
+  //         setLoading(false);
+  //         return;
+  //       }
+  //     }
+
+  //     for (let update of updates) {
+  //       const payload = {
+  //         order_number: orderData.order_number,
+  //         item_id: itemData?.item_id,
+  //         component_id: update.component_id,
+  //         component_data_code: update.component_data_code,
+  //         updateData: {
+  //           date: update.date,
+  //           quantity_produced: update.quantity_produced,
+  //           stock_used: update.stock_used,
+  //           total_completed: update.total_completed,
+  //           notes: update.notes
+  //         }
+  //       };
+
+  //       socket.emit("updateGlassProduction", payload);
+
+  //       socket.once("glassProductionUpdatedSelf", ({ order_number, item_id, component_id, updatedComponent }) => {
+  //         console.log("✅ Production updated:", order_number, item_id, component_id, updatedComponent);
+  //         onUpdate(order_number, item_id, component_id, updatedComponent, updatedComponent?.status);
+  //       });
+
+  //       socket.once("glassStockAdjustedSelf", ({ dataCode, newStock }) => {
+  //         console.log("📦 Stock adjusted:", dataCode, newStock);
+
+  //         const team = "glass";
+  //         const key = `${team}Master`;
+  //         const masterData = getLocalStorageData(key) || [];
+
+  //         const updatedData = masterData.map((p) =>
+  //           p.data_code === dataCode ? { ...p, available_stock: newStock } : p
+  //         );
+
+  //         onStockUpdate(updatedData);
+  //         localStorage.setItem("glassMaster", JSON.stringify(updatedData));
+  //       });
+
+  //       socket.once("glassProductionError", (error) => {
+  //         console.error("❌ Pump update failed:", error);
+  //         setError(error || "Pump update failed");
+  //       });
+  //     }
+
+  //     setSuccessMessage("Quantities updated successfully!");
+  //     setTimeout(() => {
+  //       onClose();
+  //     }, 1500);
+
+  //   } catch (err) {
+  //     console.error("Error updating quantities:", err);
+  //     setError(err.message || "Failed to update quantities");
+  //   } finally {
+  //     setLoading(false);
+  //   }
+  // };
+
+
+
+  const handleSave = async () => {
     try {
-      const glassMasterData = JSON.parse(localStorage.getItem("glassMaster")) || [];
-      const updatedData = glassMasterData.map(glass => {
-        if (glass.data_code === dataCode) {
-          const currentStock = glass.available_stock || 0;
-          const newStock = Math.max(0, currentStock + stockAdjustment);
-          return { ...glass, available_stock: newStock };
+      setLoading(true);
+      setError(null);
+
+      if (mode === "rollBack") {
+        // 🔥 Rollback flow
+        const rollbackAssignments = assignments.filter(a => a.todayQty !== 0);
+
+        console.log(rollbackAssignments, "rollback assignment");
+        if (rollbackAssignments.length === 0) {
+          setError("Please enter a rollback quantity for at least one Pump");
+          setLoading(false);
+          return;
         }
-        return glass;
-      });
 
-      localStorage.setItem("glassMaster", JSON.stringify(updatedData));
+        for (let assignment of rollbackAssignments) {
+          const adjustmentQuantity = assignment.todayQty;
+          const reason = assignment.notes || "Defective / rollback adjustment";
 
-      window.dispatchEvent(new StorageEvent('storage', {
-        key: 'glassMaster',
-        oldValue: JSON.stringify(glassMasterData),
-        newValue: JSON.stringify(updatedData),
-        storageArea: localStorage
-      }));
+          console.log(adjustmentQuantity, "adjusted value")
+          if (!adjustmentQuantity || adjustmentQuantity === 0) {
+            setError(`Invalid rollback quantity for ${assignment.pump_name}`);
+            setLoading(false);
+            return;
+          }
 
-      window.dispatchEvent(new CustomEvent('glassMasterUpdated', {
-        detail: {
-          updatedData,
-          dataCode,
-          newStock: updatedData.find(g => g.data_code === dataCode)?.available_stock
+          if (!reason.trim()) {
+            setError(`Please provide a reason for ${assignment.pump_name}`);
+            setLoading(false);
+            return;
+          }
+
+          // Build rollback payload
+          const adjustmentPayload = {
+            order_number: orderData.order_number,
+            item_id: itemData?.item_id,
+            component_id: assignment.component_id,
+            updateData: {
+              quantity_to_remove: adjustmentQuantity,
+              username: "glass_admin",
+              reason: reason.trim(),
+              notes: `Negative adjustment: -${adjustmentQuantity} units removed. Reason: ${reason.trim()}`
+            }
+          };
+
+          console.log("📤 Emitting rollback adjustment:", adjustmentPayload);
+          socket.emit("negativeAdjustmentGlassComponent", adjustmentPayload);
         }
-      }));
 
-    } catch (error) {
-      console.error('Error updating localStorage glass master:', error);
+        // ✅ Listen once for response
+        socket.once("glassNegativeAdjustmentUpdatedSelf", (data) => {
+          console.log("✅ Rollback updated:", data);
+          onUpdate(
+            data.order_number,
+            data.item_id,
+            data.component_id,
+            data.updatedComponent,
+            data.updatedComponent?.status,
+            data.itemChanges,
+            data.orderChanges
+          );
+        });
+
+        socket.once("glassNegativeAdjustmentError", ({ message }) => {
+          console.error("Rollback error:", message);
+          setError(`Error adjusting quantity: ${message}`);
+        });
+
+        setSuccessMessage("Rollback adjustments submitted successfully!");
+        setTimeout(() => onClose(), 1500);
+      }
+
+      else {
+        // ✅ Normal Production Flow
+        const updates = assignments
+          .filter(a => a.todayQty !== 0)
+          .map(a => {
+            const currentCompleted = a.completed_qty || 0;
+            const stockUsed = stockQuantities[a.component_id] || 0;
+            const newProduction = Math.max(0, a.todayQty - stockUsed);
+            const newCompleted = currentCompleted + a.todayQty;
+
+            return {
+              component_data_code: a.data_code,
+              component_id: a.component_id,
+              quantity_produced: newProduction,
+              stock_used: stockUsed,
+              total_completed: newCompleted,
+              notes: a.notes || "",
+              date: new Date().toISOString()
+            };
+          });
+
+        if (updates.length === 0) {
+          setError("Please enter quantity for at least one glass");
+          setLoading(false);
+          return;
+        }
+
+        for (let assignment of assignments) {
+          const remaining = getRemainingQty(assignment);
+          if (assignment.todayQty > remaining) {
+            setError(`Quantity for ${assignment.name} exceeds remaining amount (${remaining})`);
+            setLoading(false);
+            return;
+          }
+        }
+
+        console.log("📤 Emitting production updates:", updates);
+
+        for (let update of updates) {
+          const payload = {
+            order_number: orderData.order_number,
+            item_id: itemData?.item_id,
+            component_id: update.component_id,
+            component_data_code: update.component_data_code,
+            updateData: {
+              date: update.date,
+              quantity_produced: update.quantity_produced,
+              stock_used: update.stock_used,
+              total_completed: update.total_completed,
+              notes: update.notes
+            }
+          };
+
+          socket.emit("updateGlassProduction", payload);
+
+          // ✅ Production confirmation
+          socket.once("glassProductionUpdatedSelf", ({ order_number, item_id, component_id, updatedComponent }) => {
+            console.log("✅ Production updated:", order_number, item_id, component_id, updatedComponent);
+            onUpdate(order_number, item_id, component_id, updatedComponent, updatedComponent?.status);
+          });
+
+          // 📦 Stock adjustment confirmation
+          socket.once("glassStockAdjustedSelf", ({ dataCode, newStock }) => {
+            console.log("📦 Stock adjusted:", dataCode, newStock);
+
+            const team = "glass";
+            const key = `${team}Master`;
+            const masterData = getLocalStorageData(key) || [];
+
+            const updatedData = masterData.map((p) =>
+              p.data_code === dataCode ? { ...p, available_stock: newStock } : p
+            );
+
+            onStockUpdate(updatedData);
+            localStorage.setItem("glassMaster", JSON.stringify(updatedData));
+          });
+
+          socket.once("glassProductionError", (error) => {
+            console.error("❌ glass update failed:", error);
+            setError(error || "glass update failed");
+          });
+        }
+
+        setSuccessMessage("Quantities updated successfully!");
+        setTimeout(() => {
+          onClose();
+        }, 1500);
+
+      }
+
+    } catch (err) {
+      console.error("Error in handleSave:", err);
+      setError(err.message || "Failed to update quantities");
+    } finally {
+      setLoading(false);
     }
   };
-
-// const handleSave = async () => {
-//   try {
-//     setLoading(true);
-//     setError(null);
-
-//     const updates = assignments
-//       .filter(assignment => assignment.todayQty > 0)
-//       .map(assignment => {
-//         const currentCompleted = assignment.completed_qty || 0;
-//         const stockUsed = stockQuantities[assignment.component_id] || 0;
-//         const newProduction = Math.max(0, assignment.todayQty - stockUsed);
-//         const newCompleted = currentCompleted + assignment.todayQty;
-
-//         return {
-//           component_data_code: assignment.data_code,
-//           component_id: assignment.component_id,
-//           quantity_produced: newProduction,
-//           stock_used: stockUsed,
-//           total_completed: newCompleted,
-//           notes: assignment.notes || '',
-//           date: new Date().toISOString()
-//         };
-//       });
-
-//     if (updates.length === 0) {
-//       setError('Please enter quantity for at least one Glass');
-//       setLoading(false);
-//       return;
-//     }
-
-//     for (let assignment of assignments) {
-//       const remaining = getRemainingQty(assignment);
-//       if (assignment.todayQty > remaining) {
-//         setError(`Quantity for ${assignment.name} exceeds remaining amount (${remaining})`);
-//         setLoading(false);
-//         return;
-//       }
-//     }
-//     const TEAM = 'glass';
-//     const STORAGE_KEY = getStorageKey(TEAM);
-//     const allStoredOrders = getLocalStorageData(STORAGE_KEY) || [];
-    
-//     const completeOrderIndex = allStoredOrders.findIndex(
-//       order => order.order_number === orderData.order_number
-//     );
-    
-//     if (completeOrderIndex === -1) {
-//       throw new Error('Order not found in storage');
-//     }
-
-//     const completeOrder = JSON.parse(JSON.stringify(allStoredOrders[completeOrderIndex]));
-
-    
-//     const updateMap = new Map();
-//     updates.forEach(update => {
-//       updateMap.set(update.component_id, update);
-//     });
-    
-
-//     const updatedOrder = {
-//       ...completeOrder,
-//       items: completeOrder.items.map(item => {
-//         if (item.item_id === itemData.item_id) {
-//           console.log('Updating item:', item.item_id);
-          
-//           return {
-//             ...item,
-//             components: item.components.map(component => {
-//               const update = updateMap.get(component.component_id);
-              
-//               if (update && component.component_type === "glass") {
-//                 console.log('Updating glass component:', component.component_id);
-                
-//                 const newTrackingEntry = {
-//                   date: update.date,
-//                   username: "bottle_team",
-//                   quantity_produced: update.quantity_produced,
-//                   stock_used: update.stock_used,
-//                   total_completed: update.total_completed,
-//                   notes: update.notes
-//                 };
-
-//                 const updatedTracking = [...(component.tracking || []), newTrackingEntry];
-//                 const newStatus = update.total_completed >= component.qty ? 'COMPLETED' : 'IN_PROGRESS';
-
-//                 return {
-//                   ...component, 
-//                   completed_qty: update.total_completed,
-//                   status: newStatus,
-//                   tracking: updatedTracking
-//                 };
-//               }
-//               return component;
-//             })
-//           };
-//         }
-//         return item;
-//       })
-//     };
-
-//     for (let update of updates) {
-//       console.log('Making API call with data_code:', update.component_data_code);
-//       const glassResult = await fetch(
-//         `https://doms-k1fi.onrender.com/api/masters/glass/production/${encodeURIComponent(orderData.order_number)}/${itemData?.item_id}/${update.component_id}`,
-//         {
-//           method: "PATCH",
-//           headers: { "Content-Type": "application/json" },
-//           body: JSON.stringify({
-//             date: update.date || new Date().toISOString(),
-//             quantity_produced: update.quantity_produced,
-//             stock_used: update.stock_used,
-//             total_completed: update.total_completed,
-//             notes: update.notes,
-//             username: "bottle_team"
-//           }),
-//         }
-//       );
-
-//       if (!glassResult.ok) {
-//         throw new Error(`HTTP error! status: ${glassResult.status}`);
-//       }
-
-//       const glassResponse = await glassResult.json();
-//       if (!glassResponse.success) {
-//         throw new Error(glassResponse.message || 'Glass update failed');
-//       }
-
-//       if (update.stock_used > 0) {
-//         const adjustmentValue = -(update.stock_used);
-//         const stockAdjustResult = await fetch(
-//           `https://doms-k1fi.onrender.com/api/masters/glass/stock/adjust/${update.component_data_code}`,
-//           {
-//             method: "PATCH",
-//             headers: { "Content-Type": "application/json" },
-//             body: JSON.stringify({ adjustment: Number(adjustmentValue) }),
-//           }
-//         );
-
-//         if (!stockAdjustResult.ok) {
-//           throw new Error(`Stock adjust failed: ${stockAdjustResult.status}`);
-//         }
-
-//         const stockAdjustResponse = await stockAdjustResult.json();
-//         if (!stockAdjustResponse.success) {
-//           throw new Error(stockAdjustResponse.message || 'Stock adjustment failed');
-//         }
-
-//         updateLocalStorageGlassMaster(update.component_data_code, adjustmentValue);
-//       }
-//     }
-//     allStoredOrders[completeOrderIndex] = updatedOrder;
-//     localStorage.setItem(STORAGE_KEY, JSON.stringify(allStoredOrders));
-
-//     window.dispatchEvent(new StorageEvent('storage', {
-//       key: STORAGE_KEY,
-//       newValue: JSON.stringify(allStoredOrders),
-//       storageArea: localStorage
-//     }));
-
-//     setSuccessMessage('Glass quantities updated successfully!');
-
-//     setTimeout(() => {
-//       try {
-//         const updatedGlassData = JSON.parse(localStorage.getItem("glassMaster") || "[]");
-//         onStockUpdate?.(updatedGlassData); 
-//       } catch (error) {
-//         console.error('Error reading updated glass master data:', error);
-//         onStockUpdate?.([]); 
-//       }
-//       onUpdate(updatedOrder);
-//       onClose();
-//     }, 1500);
-
-//   } catch (err) {
-//     console.error('Error updating glass quantities:', err);
-//     setError(err.message || 'Failed to update glass quantities');
-//   } finally {
-//     setLoading(false);
-//   }
-// };
-
-
-const handleSave = async () => {
-  try {
-    setLoading(true);
-    setError(null);
-
-    const updates = assignments
-      .filter(assignment => assignment.todayQty > 0)
-      .map(assignment => {
-        const currentCompleted = assignment.completed_qty || 0;
-        const stockUsed = stockQuantities[assignment.component_id] || 0;
-        const newProduction = Math.max(0, assignment.todayQty - stockUsed);
-        const newCompleted = currentCompleted + assignment.todayQty;
-
-        return {
-          component_data_code: assignment.data_code,
-          component_id: assignment.component_id,
-          quantity_produced: newProduction,
-          stock_used: stockUsed,
-          total_completed: newCompleted,
-          notes: assignment.notes || '',
-          date: new Date().toISOString()
-        };
-      });
-
-    if (updates.length === 0) {
-      setError('Please enter quantity for at least one Pump');
-      setLoading(false);
-      return;
-    }
-
-    for (let assignment of assignments) {
-      const remaining = getRemainingQty(assignment);
-      if (assignment.todayQty > remaining) {
-        setError(`Quantity for ${assignment.pump_name} exceeds remaining amount (${remaining})`);
-        setLoading(false);
-        return;
-      }
-    }
-
-    for (let update of updates) {
-      const payload = {
-        order_number: orderData.order_number,
-        item_id: itemData?.item_id,
-        component_id: update.component_id,
-        component_data_code: update.component_data_code,
-        updateData: {
-          date: update.date,
-          quantity_produced: update.quantity_produced,
-          stock_used: update.stock_used,
-          total_completed: update.total_completed,
-          notes: update.notes
-        }
-      };
-
-      socket.emit("updateGlassProduction", payload);
-
-      socket.once("glassProductionUpdatedSelf", ({ order_number, item_id ,component_id , updatedComponent }) => {
-        console.log("✅ Production updated:",  order_number, item_id ,component_id , updatedComponent );
-        onUpdate( order_number, item_id ,component_id , updatedComponent ,updatedComponent?.status);
-      });
-
-      socket.once("glassStockAdjustedSelf", ({ dataCode, newStock }) => {
-        console.log("📦 Stock adjusted:", dataCode, newStock);
-
-        const team = "glass";
-        const key = `${team}Master`;
-        const masterData = getLocalStorageData(key) || [];
-
-        const updatedData = masterData.map((p) =>
-          p.data_code === dataCode ? { ...p, available_stock: newStock } : p
-        );
-
-        onStockUpdate(updatedData);
-        localStorage.setItem("glassMaster", JSON.stringify(updatedData));
-      });
-
-      socket.once("glassProductionError", (error) => {
-        console.error("❌ Pump update failed:", error);
-        setError(error || "Pump update failed");
-      });
-    }
-
-    setSuccessMessage("Quantities updated successfully!");
-    setTimeout(() => {
-      onClose();
-    }, 1500);
-
-  } catch (err) {
-    console.error("Error updating quantities:", err);
-    setError(err.message || "Failed to update quantities");
-  } finally {
-    setLoading(false);
-  }
-};
-
-
-
-
 
   return (
     <Dialog open={isOpen} onClose={onClose}>
@@ -529,18 +515,28 @@ const handleSave = async () => {
                           </div>
                         </div>
 
-                        <div className="px-2">
+                         <div className="px-2">
                           {!isCompleted ? (
                             <div className="space-y-2">
-                              <input
-                                type="number"
-                                // min={stockUsed}
-                                max={remaining + stockUsed}
-                                value={assignment.todayQty === null ? stockUsed : assignment.todayQty}
-                                onChange={(e) => handleQuantityChange(index, e.target.value)}
-                                className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
-                                placeholder="Total Qty"
-                              />
+                              {mode === "rollBack" ? (
+                                <input
+                                  type="text"
+                                  value={assignment.todayQty ?? ""}
+                                  onChange={(e) => handleQuantityChange(index, e.target.value, "rollBack")}
+                                  className="w-full px-2 py-1 text-sm border border-red-400 rounded focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
+                                  placeholder="Rollback Qty"
+                                />
+                              ) : (
+                                <input
+                                  type="number"
+                                  min={0}
+                                  max={remaining}
+                                  value={assignment.todayQty === null ? stockUsed : assignment.todayQty}
+                                  onChange={(e) => handleQuantityChange(index, e.target.value, "normal")}
+                                  className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                                  placeholder="Total Qty"
+                                />
+                              )}
                               <input
                                 type="text"
                                 value={assignment.notes}

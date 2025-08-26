@@ -6,7 +6,7 @@ import { useCurrentDateTime } from '../../hooks/useCurrentDateTime.jsx';
 import GlassMaster from './GlassMaster.jsx';
 import GlassOrders from './GlassOrders.jsx';
 import { getSocket } from '../../context/SocketContext.jsx';
-import { getLocalStorageData, updateOrderInLocalStorage } from '../../utils/orderStorage.jsx';
+import { getLocalStorageData, getOrdersByStatus, getStorageKey, updateOrderInLocalStorage } from '../../utils/orderStorage.jsx';
 
 const GlassDashboard = ({ isEmbedded = false }) => {
   const [activeMenuItem, setActiveMenuItem] = useState('liveOrders');
@@ -20,7 +20,8 @@ const GlassDashboard = ({ isEmbedded = false }) => {
     loading: false,
     error: null,
     glassMasterReady: false,
-    dataVersion: 0
+    dataVersion: 0,
+    refreshOrders: 0
   });
 
 
@@ -84,6 +85,7 @@ const GlassDashboard = ({ isEmbedded = false }) => {
   }, [fetchGlassMaster]);
 
 
+
   useEffect(() => {
     if (!socket) return;
 
@@ -132,7 +134,7 @@ const GlassDashboard = ({ isEmbedded = false }) => {
       });
     };
 
-       const handleGlassUpdatedBroadcast = (updatedPump) => {
+    const handleGlassUpdatedBroadcast = (updatedPump) => {
       setGlobalState(prev => {
         const updatedProducts = prev.allProducts.map(p =>
           p._id === updatedPump._id ? updatedPump : p
@@ -169,12 +171,41 @@ const GlassDashboard = ({ isEmbedded = false }) => {
       localStorage.setItem("glassMaster", JSON.stringify(updatedData));
     }
 
+    const handleNegativeAdjustment = ({
+      order_number,
+      item_id,
+      component_id,
+      updatedComponent,
+      adjustmentSummary,
+      itemChanges,
+      orderChanges
+    }) => {
+      console.log("📢 Received negative adjustment update from another user:", {
+        order_number,
+        component: updatedComponent,
+        summary: adjustmentSummary
+      });
+
+      // Update the local state for other users
+      handleOrderUpdate(
+        order_number,
+        item_id,
+        component_id,
+        updatedComponent,
+        updatedComponent?.status,
+        itemChanges,
+        orderChanges
+      );
+    }
+
     socket.on("glassStockUpdated", handleGlassBroadcast);
     socket.on("glassDeleted", handleGlassDeletedBroadcast);
     socket.on("glassAdded", handleGlassAddedBroadcast);
     socket.on("glassUpdated", handleGlassUpdatedBroadcast);
     socket.on("glassProductionUpdated", handleGlassProductionUpdated);
     socket.on("glassStockAdjusted", handleGlassStockAdjusted);
+    socket.on("glassNegativeAdjustmentUpdated", handleNegativeAdjustment);
+
 
     return () => {
       socket.off("glassStockUpdated", handleGlassBroadcast);
@@ -183,59 +214,71 @@ const GlassDashboard = ({ isEmbedded = false }) => {
       socket.off("glassUpdated", handleGlassUpdatedBroadcast);
       socket.off("glassProductionUpdated", handleGlassProductionUpdated);
       socket.off("glassStockAdjusted", handleGlassStockAdjusted);
+      socket.off("glassNegativeAdjustmentUpdated", handleNegativeAdjustment);
     };
   }, [socket]);
-  ;
-const handleOrderUpdate = useCallback(
-  (orderNumber, itemId, componentId, updatedComponent, newStatus) => {
-    console.log(orderNumber, itemId, componentId, updatedComponent, newStatus, "UPDATE");
-    const team = "glass";
 
-    setGlobalState(prev => {
-      const ordersCopy = [...prev.orders];
 
-      const orderIndex = ordersCopy.findIndex(
-        order => order.order_number === orderNumber
-      );
 
+  const handleOrderUpdate = useCallback(
+    (
+      orderNumber,
+      itemId,
+      componentId,
+      updatedComponent,
+      newStatus,
+      itemChanges = {},
+      orderChanges = {}
+    ) => {
+      console.log("🔄 Order update received:", {
+        orderNumber,
+        itemId,
+        componentId,
+        updatedComponent,
+        newStatus,
+        itemChanges,
+        orderChanges,
+      });
+
+      const team = "glass";
+      const STORAGE_KEY = getStorageKey(team);
+      let allOrders = getLocalStorageData(STORAGE_KEY) || [];
+
+      const orderIndex = allOrders.findIndex(order => order.order_number === orderNumber);
       if (orderIndex === -1) {
-        console.warn("Order not found:", orderNumber);
-        return prev;
+        console.warn("⚠️ Order not found in storage:", orderNumber);
+        return;
       }
 
-      const currentOrder = ordersCopy[orderIndex];
+      const currentOrder = allOrders[orderIndex];
 
       const updatedOrder = {
         ...currentOrder,
+        status: orderChanges?.new_status || currentOrder.status,
         items: currentOrder.items.map(item =>
           item.item_id === itemId
             ? {
-                ...item,
-                components: item.components.map(c =>
-                  c.component_id === componentId
-                    ? { ...c, ...updatedComponent }
-                    : c
-                )
-              }
+              ...item,
+              status: itemChanges?.new_status || item.status,
+              components: item.components.map(c =>
+                c.component_id === componentId
+                  ? { ...c, ...updatedComponent }
+                  : c
+              ),
+            }
             : item
-        )
+        ),
       };
-
-      ordersCopy[orderIndex] = updatedOrder;
       updateOrderInLocalStorage(team, updatedOrder);
-
-      console.log("Updated Order:", updatedOrder);
-      console.log("Updated Orders Array:", ordersCopy);
-
-      return {
+      setGlobalState(prev => ({
         ...prev,
-        orders: ordersCopy,
-        dataVersion: prev.dataVersion + 1
-      };
-    });
-  },
-  []
-);
+        refreshOrders: prev.refreshOrders + 1,
+      }));
+
+      console.log("✅ Order updated in storage and refresh triggered");
+    },
+    []
+  );
 
 
   const handleStockUpdate = useCallback((updatedProducts) => {
@@ -279,16 +322,37 @@ const handleOrderUpdate = useCallback(
     { id: 'liveOrders', label: 'Live Orders' },
     { id: 'ReadyToDispatch', label: 'Ready to Dispatch' },
     { id: 'dispatched', label: 'Dispatched' },
-    { id: 'GlassMaster', label: 'Glass Master' },
+    { id: 'GlassMaster', label: 'Glass Master' }
+
   ];
+
+
+
+
+  const refreshOrders = useCallback((orderType) => {
+    const TEAM = "glass";
+    const ordersToLoad = getOrdersByStatus(TEAM, orderType);
+
+    if (orderType === "in_progress") {
+      const filteredOrders = ordersToLoad.filter(
+        order => order.order_status !== "PENDING_PI"
+      );
+      handleOrdersUpdate(filteredOrders);
+    } else {
+      handleOrdersUpdate(ordersToLoad);
+    }
+  }, [handleOrdersUpdate]);
 
   const renderActiveComponent = () => {
     const commonProps = {
       globalState,
       onOrderUpdate: handleOrderUpdate,
       onStockUpdate: handleStockUpdate,
-      onOrdersUpdate: handleOrdersUpdate
+      onOrdersUpdate: handleOrdersUpdate,
+      refreshOrders
     };
+
+
 
     switch (activeMenuItem) {
       case 'liveOrders':

@@ -1,13 +1,15 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { X, Save, Plus, Minus, Truck, AlertTriangle, CheckCircle, Eye, Package, Calendar, User } from 'lucide-react';
-import { getSocket } from '../../../context/SocketContext';
 
-const DispatchOrders = ({ isOpen, onClose, orderData, itemData, onUpdate }) => {
+
+const DispatchOrders = ({ isOpen, onClose, orderData, itemData, onDispatch }) => {
   const [vehicleDetails, setVehicleDetails] = useState([]);
   const [isDispatching, setIsDispatching] = useState(false);
   const [showVehicleDetails, setShowVehicleDetails] = useState(false);
   const [dispatchNotes, setDispatchNotes] = useState('Item dispatched');
-  const socket = getSocket();
+  const [error, setError] = useState('');
+
+
 
 
   useEffect(() => {
@@ -16,59 +18,18 @@ const DispatchOrders = ({ isOpen, onClose, orderData, itemData, onUpdate }) => {
     }
   }, [itemData]);
 
-  const handleDispatch = () => {
-    if (!orderData || !itemData) return;
-    const orderNumber = orderData.order_number;
-    const itemId = itemData.item_id;
-    const componentId = itemData.components[0]?.component_id;
-
-    setIsDispatching(true);
-    socket?.emit("dispatchOrder", {
-      order_number: orderNumber,
-      item_id: itemId,
-      component_id: componentId,
-      dispatched_by: "glass_admin",
-      notes: dispatchNotes
-    });
+  const handleConfirm = async () => {
+    try {
+      setIsDispatching(true);
+      await onDispatch();
+      onClose();
+    } catch (err) {
+      setError(err.message || 'Failed to dispatch order');
+    } finally {
+      setIsDispatching(false);
+    }
   };
 
-  useEffect(() => {
-
-    if (!socket) return;
-
-    const handleDispatchSuccess = (data) => {
-      console.log("Dispatch successful:", data);
-
-      if (onUpdate) {
-
-        onUpdate(
-          data.order_number,
-          data.item_id,
-          data.component_id,
-          data.dispatchData,
-          'DISPATCHED'
-        );
-      }
-
-      alert("Order dispatched successfully!");
-      setIsDispatching(false);
-      onClose();
-    };
-
-    const handleDispatchError = (error) => {
-      console.error("Dispatch failed:", error);
-      alert("Dispatch failed: " + error);
-      setIsDispatching(false);
-    };
-
-    socket.on("orderDispatchedSelf", handleDispatchSuccess);
-    socket.on("orderDispatchError", handleDispatchError);
-
-    return () => {
-      socket.off("orderDispatchedSelf", handleDispatchSuccess);
-      socket.off("orderDispatchError", handleDispatchError);
-    };
-  }, [onUpdate, onClose]);
 
   if (!isOpen) return null;
 
@@ -245,7 +206,7 @@ const DispatchOrders = ({ isOpen, onClose, orderData, itemData, onUpdate }) => {
                   Cancel
                 </button>
                 <button
-                  onClick={handleDispatch}
+                  onClick={handleConfirm}
                   disabled={isDispatching}
                   className="px-6 py-2 bg-gradient-to-r from-orange-500 to-orange-600 text-white rounded-lg hover:from-orange-600 hover:to-orange-700 transition-colors disabled:opacity-50 flex items-center space-x-2"
                 >

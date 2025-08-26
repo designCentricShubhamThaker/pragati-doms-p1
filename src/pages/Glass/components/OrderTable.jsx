@@ -22,7 +22,8 @@ const OrderTable = ({
   formatStatusLabel,
   getAvailableStock,
 }) => {
-function sumTrackingKey(tracking, key) {
+
+  function sumTrackingKey(tracking, key) {
     return tracking.reduce((total, entry) => {
       return total + (Number(entry[key]) || 0);
     }, 0);
@@ -72,13 +73,13 @@ function sumTrackingKey(tracking, key) {
             {orderType === 'ready_to_dispatch' && (
               <div className="text-center">Veh Info</div>
             )}
-             {orderType === 'ready_to_dispatch' && (
+            {orderType === 'ready_to_dispatch' && (
               <div className="text-center">Rollback</div>
             )}
             {orderType === 'ready_to_dispatch' && (
               <div className="text-center">Dispatch</div>
             )}
-           
+
           </div>
         </div>
 
@@ -93,7 +94,8 @@ function sumTrackingKey(tracking, key) {
 
           return (
             <div
-              key={order.order_number}
+              key={`${order.order_number}`}
+
               className="bg-white rounded-lg shadow-sm border border-orange-200 mb-3 overflow-hidden"
             >
               {order.items?.map((item, itemIndex) => {
@@ -109,11 +111,11 @@ function sumTrackingKey(tracking, key) {
                   const remainingQty = glass ? getRemainingQty(glass) : "N/A";
                   const status = glass ? glass.status : "N/A";
 
-                  
+
 
                   return (
                     <div
-                      key={`${order.order_number}-${item.item_name}-${glass?.name || "empty"}-${glassIndex}`}
+                      key={`${order.order_number}-${item.item_name}-${glass?.component_id || `empty-${glassIndex}`}`}
                       className={`grid ${orderType === 'ready_to_dispatch' ? 'grid-cols-25' : 'grid-cols-22'} gap-1 items-center py-2 px-3 text-xs ${bgColor}`}
                     >
                       <div className="text-left col-span-2">
@@ -252,7 +254,7 @@ function sumTrackingKey(tracking, key) {
                             onClick={() => handleVehicleDetails(order, item, glass)}
                             className="p-1.5 bg-orange-600 rounded text-white hover:bg-orange-500"
                           >
-                            <FaTruckRampBox   size={14} />
+                            <FaTruckRampBox size={14} />
                           </button >
                         </div>
                       )}
@@ -262,7 +264,7 @@ function sumTrackingKey(tracking, key) {
                             onClick={() => handleRollback(order, item, glass)}
                             className="p-1.5 bg-orange-600 rounded text-white hover:bg-orange-500"
                           >
-                            <AiOutlineRollback    size={14} />
+                            <AiOutlineRollback size={14} />
                           </button >
                         </div>
                       )}
@@ -272,11 +274,11 @@ function sumTrackingKey(tracking, key) {
                             onClick={() => handleDispatch(order, item, glass)}
                             className="p-1.5 bg-orange-600 rounded text-white hover:bg-orange-500"
                           >
-                            <BsFillCartCheckFill   size={14} />
+                            <BsFillCartCheckFill size={14} />
                           </button >
                         </div>
                       )}
-                      
+
                     </div>
                   );
                 });
@@ -333,7 +335,7 @@ function sumTrackingKey(tracking, key) {
 
                         return (
                           <div
-                            key={glass.name || glass.data_code}
+                            key={glass.component_id}
                             className="bg-white rounded-lg p-3 shadow-sm mt-2"
                           >
                             <div className="flex items-center justify-between mb-2">
@@ -423,7 +425,7 @@ function sumTrackingKey(tracking, key) {
                                 <div>
                                   <span className="text-gray-500">Inventory Used:</span>{" "}
                                   <span className="font-semibold text-blue-600">
-                                     {sumTrackingKey(glass?.tracking, "stock_used")}
+                                    {sumTrackingKey(glass?.tracking, "stock_used")}
                                   </span>
                                 </div>
                                 {/* Updated with calculated value */}

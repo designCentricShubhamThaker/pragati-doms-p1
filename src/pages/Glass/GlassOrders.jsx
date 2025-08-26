@@ -9,14 +9,16 @@ import AddGlassStock from './components/AddGlassStock.jsx';
 import Pagination from '../../utils/Pagination.jsx';
 import AddVehicleDetails from './components/AddVehicleDetails.jsx';
 import DispatchOrders from './components/DispatchOrders.jsx';
-import Rollback from './components/Rollback.jsx';
+import RollbackOrderModal from './components/RollbackOrderModal.jsx';
+import { getSocket } from '../../context/SocketContext.jsx';
 
 const GlassOrders = ({
   orderType = 'in_progress',
   globalState,
   onOrderUpdate,
   onStockUpdate,
-  onOrdersUpdate
+  onOrdersUpdate,
+  refreshOrders
 }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -27,6 +29,7 @@ const GlassOrders = ({
   // Modal states
   const [showModal, setShowModal] = useState(false);
   const [showVehicleDetails, setShowVehicleDetails] = useState(false);
+  const [selectedComponent, setSelectedComponent] = useState(false)
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [selectedItem, setSelectedItem] = useState(null);
   const [showStockDialog, setShowStockDialog] = useState(false);
@@ -34,13 +37,15 @@ const GlassOrders = ({
   const [showAddStockModal, setShowAddStockModal] = useState(false);
   const [addStockGlassDetails, setAddStockGlassDetails] = useState(null);
   const [dispatchOrder, setDispatchOrder] = useState(false)
-  const [rollback,setRollback] = useState(false)
+  const [rollback, setRollback] = useState(false)
+    const [selectHandleNegativeValue , setSetlectHandleNegative] = useState(null);
 
   const ordersPerPage = 5;
   const TEAM = 'glass';
   const STORAGE_KEY = getStorageKey(TEAM);
 
   const { allProducts, orders, glassMasterReady, dataVersion } = globalState;
+  const socket = getSocket()
   const currentOrders = orders || [];
 
   const FilterGlassOrders = useCallback((items) => {
@@ -82,6 +87,17 @@ const GlassOrders = ({
     return glassLookupMap.get(key) ?? 0;
   }, [glassLookupMap, glassMasterReady, allProducts.length]);
 
+  const handleClose = useCallback(() => {
+    setShowModal(false);
+    setShowVehicleDetails(false);
+    setDispatchOrder(false)
+    setStockQuantities({});
+    setSelectedComponent(null)
+    setRollback(false)
+    setSelectedOrder(null);
+    setSelectedItem(null);
+    setSetlectHandleNegative(null)
+  }, []);
 
   useEffect(() => {
     const loadOrders = async () => {
@@ -123,7 +139,66 @@ const GlassOrders = ({
     };
 
     loadOrders();
-  }, [orderType, onOrdersUpdate, currentOrders]);
+  }, [orderType, onOrdersUpdate, currentOrders, globalState?.refreshOrders]);
+
+  useEffect(() => {
+    refreshOrders(orderType);
+  }, [refreshOrders, orderType]);
+
+  const handleDispatchGlass = useCallback(
+    async () => {
+      try {
+        if (!selectedOrder || !selectedItem || !selectedComponent) {
+          console.error("❌ Missing dispatch selection");
+          return;
+        }
+
+        const dispatchPayload = {
+          order_number: selectedOrder.order_number,
+          item_id: selectedItem.item_id,
+          component_id: selectedComponent.component_id,
+          updateData: {
+            dispatched_by: "glass_admim",
+            notes: "Glass component dispatched to warehouse for final assembly."
+          }
+        };
+
+        socket.emit("dispatchGlassComponent", dispatchPayload);
+
+        socket.once("glassDispatchUpdatedSelf", ({ order_number, item_id, component_id, updatedComponent, itemChanges, orderChanges }) => {
+          onOrderUpdate(order_number, item_id, component_id, updatedComponent, updatedComponent?.status, itemChanges, orderChanges);
+        });
+
+        socket.once("glassDispatchError", ({ message }) => {
+          console.error("Dispatch error:", message);
+          setError(`Error dispatching order: ${message}`);
+          setLoading(false);
+        });
+
+   
+
+      } catch (error) {
+        console.error("Error in dispatch operation:", error);
+        setError(`Dispatch failed: ${error.message}`);
+        setLoading(false);
+      }
+    },
+    [
+      selectedOrder,
+      selectedItem,
+      selectedComponent,
+      onOrderUpdate,
+      handleClose
+    ]
+  );
+
+   const handleNegativeValueModal = useCallback(() => {
+    setSetlectHandleNegative("rollBack");
+    setShowStockDialog(false);
+    setShowModal(true);
+  }, []);
+
+
 
   const aggregatedglasss = useMemo(() => {
 
@@ -268,6 +343,7 @@ const GlassOrders = ({
   const handleCloseAddStock = useCallback(() => {
     setShowAddStockModal(false);
     setAddStockGlassDetails(null);
+    setSelectedComponent(null)
   }, []);
 
   const toggleRowExpansion = useCallback((rowId) => {
@@ -285,6 +361,8 @@ const GlassOrders = ({
   const handlePageChange = useCallback((page) => {
     setCurrentPage(page);
   }, []);
+
+
 
   const handleEditClick = useCallback((order, item) => {
     setSelectedOrder(order);
@@ -317,15 +395,7 @@ const GlassOrders = ({
     setSelectedItem(null);
   }, []);
 
-  const handleClose = useCallback(() => {
-    setShowModal(false);
-    setShowVehicleDetails(false);
-    setDispatchOrder(false)
-    setStockQuantities({});
-    setRollback(false)
-    setSelectedOrder(null);
-    setSelectedItem(null);
-  }, []);
+
 
   const handleCopyGlassName = useCallback((componentName) => {
     setSearchTerm(componentName);
@@ -342,23 +412,12 @@ const GlassOrders = ({
     setCurrentPage(1);
   }, []);
 
-  const refreshOrders = useCallback(() => {
-    const ordersToLoad = getOrdersByStatus(TEAM, orderType);
-
-    if (orderType === "in_progress") {
-      const filteredOrders = ordersToLoad.filter(order => order.order_status !== "PENDING_PI");
-      onOrdersUpdate(filteredOrders);
-    } else {
-      onOrdersUpdate(ordersToLoad);
-    }
-  }, [orderType, onOrdersUpdate, TEAM]);
 
 
-  const handleLocalOrderUpdate = useCallback((orderNumber, item_id, component_id, updatedComponent, newStatus) => {
-    onOrderUpdate(orderNumber, item_id, component_id, updatedComponent, newStatus);
-    refreshOrders();
+ const handleLocalOrderUpdate = useCallback((orderNumber, item_id, component_id, updatedComponent, newStatus , itemChanges = {},orderChanges = {}) => {
+    onOrderUpdate(orderNumber, item_id, component_id, updatedComponent, newStatus,itemChanges,orderChanges);
     handleClose();
-  }, [onOrderUpdate, refreshOrders, handleClose]);
+  }, [onOrderUpdate, handleClose]);
 
 
   const handleVehicleDetails = useCallback((order, item, component) => {
@@ -370,14 +429,100 @@ const GlassOrders = ({
   const handleDispatch = useCallback((order, item, component) => {
     setSelectedOrder(order);
     setSelectedItem(item);
+    setSelectedComponent(component)
     setDispatchOrder(true);
   }, []);
 
   const handleRollback = useCallback((order, item, component) => {
     setSelectedOrder(order);
     setSelectedItem(item);
+     setSelectedComponent(component);
     setRollback(true);
   }, []);
+
+ const handleRollbackOrder = useCallback(
+  async () => {
+    try {
+      if (!selectedOrder || !selectedItem || !selectedComponent) {
+        console.error("❌ Missing rollback selection");
+        return;
+      }
+
+      setLoading(true);
+      setError(null);
+
+      const rollbackPayload = {
+        order_number: selectedOrder.order_number,
+        item_id: selectedItem.item_id,
+        component_id: selectedComponent.component_id,
+        updateData: {
+          quantity_to_rollback: selectedComponent.completed_qty, 
+          reason: "Removing from Orders and Add into Stock",
+          rollback_by: "glass_admin",
+        },
+        component_data_code: selectedComponent.data_code,
+      };
+
+      console.log("🔄 Starting rollback process...", rollbackPayload);
+
+      // Listen for vehicle clearing update
+      socket.once("glassVehicleUpdatedSelf", ({ order_number, item_id, component_id, updatedComponent }) => {
+        console.log("🚛 Vehicle details cleared:", updatedComponent);
+        onOrderUpdate(order_number, item_id, component_id, updatedComponent, updatedComponent?.status);
+      });
+
+      // Listen for rollback completion
+      socket.once("glassRollbackUpdatedSelf", ({ order_number, item_id, component_id, updatedComponent, itemChanges, orderChanges }) => {
+        console.log("✅ Rollback completed:", updatedComponent);
+        onOrderUpdate(order_number, item_id, component_id, updatedComponent, updatedComponent?.status, itemChanges, orderChanges);
+        setLoading(false);
+      });
+
+      // Listen for stock adjustment
+      socket.once("glassStockAdjustedSelf", ({ dataCode, newStock }) => {
+        console.log("📦 Stock adjusted:", dataCode, newStock);
+
+        const updatedProducts = allProducts.map(p =>
+          p.data_code === dataCode ? { ...p, available_stock: newStock } : p
+        );
+
+        onStockUpdate(updatedProducts);
+      });
+
+      // Listen for any errors
+      socket.once("glassRollbackError", ({ message }) => {
+        console.error("❌ Rollback error:", message);
+        setError(`Error rolling back order: ${message}`);
+        setLoading(false);
+      });
+
+      // Emit the rollback request
+      socket.emit("rollbackGlassProduction", rollbackPayload);
+
+      // Auto-close modal after a delay (optional)
+      setTimeout(() => {
+        if (!error) {
+          handleClose();
+        }
+      }, 2000);
+
+    } catch (error) {
+      console.error("Error in rollback operation:", error);
+      setError(`Rollback failed: ${error.message}`);
+      setLoading(false);
+    }
+  },
+  [
+    selectedOrder,
+    selectedItem,
+    selectedComponent,
+    handleClose,
+    allProducts,
+    onStockUpdate,
+    onOrderUpdate,
+    error
+  ]
+);
 
 
   if (!glassMasterReady) {
@@ -460,6 +605,7 @@ const GlassOrders = ({
         handleStockQuantityChange={handleStockQuantityChange}
         handleStockDialogClose={handleStockDialogClose}
         handleStockNo={handleStockNo}
+         handleNegativeValueModal={handleNegativeValueModal}
         handleStockYes={handleStockYes}
         getRemainingQty={getRemainingQty}
         setStockQuantities={setStockQuantities}
@@ -478,6 +624,7 @@ const GlassOrders = ({
           searchTerm={searchTerm}
           getAvailableStock={getAvailableStock}
           onStockUpdate={onStockUpdate}
+          mode = {selectHandleNegativeValue}
         />
       )}
 
@@ -507,15 +654,18 @@ const GlassOrders = ({
           orderData={selectedOrder}
           itemData={selectedItem}
           onUpdate={handleLocalOrderUpdate}
+          onDispatch={handleDispatchGlass}
         />
       )}
       {rollback && selectedOrder && selectedItem && (
-        <Rollback
+        <RollbackOrderModal
           isOpen={rollback}
           onClose={handleClose}
+          selectedComponent={selectedComponent}
           orderData={selectedOrder}
           itemData={selectedItem}
           onUpdate={handleLocalOrderUpdate}
+           onConfirm={handleRollbackOrder}
         />
       )}
     </div>

@@ -1,5 +1,7 @@
 import React from 'react';
 import { Package, Edit, Eye, EyeOff } from 'lucide-react'
+import { FcApproval } from "react-icons/fc";
+import { FcCancel } from "react-icons/fc";
 
 const OrderTable = ({
   currentOrders,
@@ -13,7 +15,8 @@ const OrderTable = ({
   toggleRowExpansion,
   getStatusStyle,
   formatStatusLabel,
- 
+  handleVehicleModalOpen
+
 }) => {
 
   function sumTrackingKey(tracking, key) {
@@ -22,7 +25,7 @@ const OrderTable = ({
     }, 0) || 0;
   }
 
-  
+
 
   if (currentOrders.length === 0) {
     return (
@@ -48,7 +51,7 @@ const OrderTable = ({
     <div className="space-y-4">
       <div className="hidden xl:block">
         <div className="bg-gradient-to-r from-orange-800 via-orange-600 to-orange-400 rounded-lg shadow-md py-3 px-4 mb-3">
-          <div className="grid grid-cols-19 gap-1 text-white font-semibold text-xs items-center">
+          <div className="grid grid-cols-22 gap-1 text-white font-semibold text-xs items-center">
             <div className="text-left col-span-2">Order #</div>
             <div className="text-left col-span-2">Manager</div>
             <div className="text-left col-span-2">Customer</div>
@@ -62,8 +65,8 @@ const OrderTable = ({
             <div className="text-left">Remaining</div>
             <div className="text-left flex justify-center">Priority</div>
             <div className="text-left flex justify-center col-span-2">Status</div>
-           
-        
+            <div className="text-left flex justify-center">Approval</div>
+            <div className="text-left flex justify-center col-span-2">Veh Approval</div>
             <div className="text-center">Edit</div>
           </div>
         </div>
@@ -74,7 +77,7 @@ const OrderTable = ({
             const glasses = item.components?.filter(c => c.component_type === "glass") || [];
             glasses.forEach(glass => {
               if (glass.is_deco && glass.decorations?.printing) {
-                totalRows += 1; 
+                totalRows += 1;
               }
             });
           });
@@ -90,22 +93,23 @@ const OrderTable = ({
                 const glasses = item.components?.filter(c => c.component_type === "glass") || [];
                 const bgColor = colorClasses[itemIndex % colorClasses.length];
 
-                return glasses.map((glass) => {
+                return glasses.map((glass, glassIndex) => {
                   if (!glass.is_deco || !glass.decorations?.printing) {
-                    return null; // Skip non-printing items
+                    return null;
                   }
 
                   const printing = glass.decorations.printing;
                   const isFirstRowOfOrder = currentRow === 0;
+                  const isFirstRowOfItem = glassIndex === 0;
                   currentRow++;
-                  
-                  const remainingQty = getRemainingQty(printing);
-                  const status = printing.status;
+
+                  const remainingQty = getRemainingQty(glass);
+
 
                   return (
                     <div
                       key={`${order.order_number}-${item.item_name}-${glass.component_id}-printing`}
-                      className={`grid grid-cols-19 gap-1 items-center py-2 px-3 text-xs ${bgColor}`}
+                      className={`grid grid-cols-22 gap-1 items-center py-2 px-3 text-xs ${bgColor}`}
                     >
                       <div className="text-left col-span-2">
                         {isFirstRowOfOrder ? (
@@ -154,7 +158,11 @@ const OrderTable = ({
                       </div>
 
                       <div className="text-left col-span-1">
-                        <span className="text-orange-800 font-medium">{item.item_name || 'N/A'}</span>
+                        {isFirstRowOfItem ? (
+                          <span className="text-orange-800 font-medium">{item.item_name || 'N/A'}</span>
+                        ) : (
+                          <span className="text-transparent">{item.item_name || 'N/A'}</span>
+                        )}
                       </div>
 
                       <div className="text-left text-orange-900 col-span-2">
@@ -203,20 +211,44 @@ const OrderTable = ({
                       </div>
 
                       <div className="text-left flex justify-center col-span-2">
-                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusStyle(status)}`}>
-                          {formatStatusLabel(status)}
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusStyle(glass)}`}>
+                          {formatStatusLabel(glass)}
                         </span>
                       </div>
 
-                      
+
+                      <div className="text-left flex justify-center col-span-1">
+                        <span className={`px-2 py-1 rounded text-xs font-bold cursor-pointer hover:opacity-80 ${glass.is_deco_approved ? 'text-green-800' : 'text-red-800'}`}>
+                          {glass.is_deco_approved ? 'Approved' : 'Awaiting'}
+                        </span>
+                      </div>
+
+                      <div className="text-center col-span-2">
+                        <button
+                          onClick={() => handleVehicleModalOpen(order, item)}
+                          className="p-1.5 rounded text-white"
+                        >
+                          {glass.vehicle_details?.length > 0 && glass.vehicle_details.every(v => v.status === "DELIVERED") ? (
+                            <FcApproval size={20} />
+                          ) : (
+                            <FcCancel size={20} />
+                          )}
+                        </button>
+
+                      </div>
+
 
                       <div className="text-center">
-                        <button
-                          onClick={() => handleEditClick(order, item, glass, 'printing')}
-                          className="p-1.5 bg-orange-600 rounded text-white hover:bg-orange-500"
-                        >
-                          <Edit size={14} />
-                        </button>
+                        {isFirstRowOfOrder && glass ? (
+                          <button
+                            onClick={() => handleEditClick(order, item)}
+                            className="p-1.5 bg-orange-600 rounded text-white hover:bg-orange-500"
+                          >
+                            <Edit size={14} />
+                          </button>
+                        ) : (
+                          <Edit size={12} className="text-transparent" />
+                        )}
                       </div>
                     </div>
                   );
@@ -388,8 +420,8 @@ const OrderTable = ({
                               </div>
                               <div>
                                 <span className="text-gray-500">Deco Approved:</span>{" "}
-                                <span className={glass.is_deco_approved ? "text-green-600" : "text-red-600"}>
-                                  {glass.is_deco_approved ? "Yes" : "No"}
+                                <span className={glass.is_deco_approved ? "text-green-800" : "text-red-800"}>
+                                  {glass.is_deco_approved ? "Approved" : "Awaiting"}
                                 </span>
                               </div>
                             </div>

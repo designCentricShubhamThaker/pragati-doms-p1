@@ -11,9 +11,9 @@ import PrintingDashbaord from './pages/Printing/PrintingDashbaord.jsx'
 const App = () => {
   return (
     <SocketProvider>
-      <Dashboard />
+      {/* <Dashboard /> */}
       {/* <GlassDashboard /> */}
-      {/* <PrintingDashbaord /> */}
+      <PrintingDashbaord />
     </SocketProvider>
 
 

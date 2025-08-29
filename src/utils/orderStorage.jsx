@@ -48,7 +48,30 @@ export const splitOrdersByTeamStatus = (orders, team) => {
       const dispatchedComponents = [];
 
       item.components.forEach(component => {
-        if (component.component_type === team) {
+        if (team === 'glass' && component.component_type === 'glass') {
+          // For glass team, use component-level status
+          if (component.status === "IN_PROGRESS" || component.status === "PENDING") {
+            inProgressComponents.push(component);
+          } else if (component.status === "READY_TO_DISPATCH") {
+            readyToDispatchComponents.push(component);
+          } else if (component.status === "DISPATCHED") {
+            dispatchedComponents.push(component);
+          }
+        } else if (team === 'printing' && component.component_type === 'glass') {
+          // For printing team, check if component has printing decorations and use decoration status
+          if (component.decorations?.printing) {
+            const printingStatus = component.decorations.printing.status;
+            
+            if (printingStatus === "IN_PROGRESS" || printingStatus === "PENDING") {
+              inProgressComponents.push(component);
+            } else if (printingStatus === "READY_TO_DISPATCH") {
+              readyToDispatchComponents.push(component);
+            } else if (printingStatus === "DISPATCHED") {
+              dispatchedComponents.push(component);
+            }
+          }
+        } else if (component.component_type === team) {
+          // For other teams, use component-level status
           if (component.status === "IN_PROGRESS" || component.status === "PENDING") {
             inProgressComponents.push(component);
           } else if (component.status === "READY_TO_DISPATCH") {
@@ -87,32 +110,55 @@ export const splitOrdersByTeamStatus = (orders, team) => {
     dispatchedOrders
   };
 };
-
-export const getOrdersByStatus = (team, status) => {
+export const getOrdersByStatus = (team, status, forPrinting = false) => {
   const storageKey = getStorageKey(team);
   const allOrders = getLocalStorageData(storageKey) || [];
   
   return allOrders.filter(order => {
     return order.items?.some(item => 
-      item.components?.some(component => 
-        component.component_type === team && 
-        (
-          (status === 'in_progress' && (component.status === 'IN_PROGRESS' || component.status === 'PENDING')) ||
-          (status === 'ready_to_dispatch' && component.status === 'READY_TO_DISPATCH') ||
-          (status === 'dispatched' && component.status === 'DISPATCHED')
-        )
-      )
+      item.components?.some(component => {
+        if (forPrinting && component.component_type === 'glass') {
+          // For printing team, check decoration status
+          if (!component.decorations?.printing) return false;
+          
+          const printingStatus = component.decorations.printing.status;
+          return (
+            (status === 'in_progress' && (printingStatus === 'IN_PROGRESS' || printingStatus === 'PENDING')) ||
+            (status === 'ready_to_dispatch' && printingStatus === 'READY_TO_DISPATCH') ||
+            (status === 'dispatched' && printingStatus === 'DISPATCHED')
+          );
+        } else {
+          // For glass team and other teams, use component status
+          return component.component_type === team && 
+            (
+              (status === 'in_progress' && (component.status === 'IN_PROGRESS' || component.status === 'PENDING')) ||
+              (status === 'ready_to_dispatch' && component.status === 'READY_TO_DISPATCH') ||
+              (status === 'dispatched' && component.status === 'DISPATCHED')
+            );
+        }
+      })
     );
   }).map(order => {
     const filteredItems = order.items?.map(item => {
-      const relevantComponents = item.components?.filter(component => 
-        component.component_type === team && 
-        (
-          (status === 'in_progress' && (component.status === 'IN_PROGRESS' || component.status === 'PENDING')) ||
-          (status === 'ready_to_dispatch' && component.status === 'READY_TO_DISPATCH') ||
-          (status === 'dispatched' && component.status === 'DISPATCHED')
-        )
-      ) || [];
+      const relevantComponents = item.components?.filter(component => {
+        if (forPrinting && component.component_type === 'glass') {
+          if (!component.decorations?.printing) return false;
+          
+          const printingStatus = component.decorations.printing.status;
+          return (
+            (status === 'in_progress' && (printingStatus === 'IN_PROGRESS' || printingStatus === 'PENDING')) ||
+            (status === 'ready_to_dispatch' && printingStatus === 'READY_TO_DISPATCH') ||
+            (status === 'dispatched' && printingStatus === 'DISPATCHED')
+          );
+        } else {
+          return component.component_type === team && 
+            (
+              (status === 'in_progress' && (component.status === 'IN_PROGRESS' || component.status === 'PENDING')) ||
+              (status === 'ready_to_dispatch' && component.status === 'READY_TO_DISPATCH') ||
+              (status === 'dispatched' && component.status === 'DISPATCHED')
+            );
+        }
+      }) || [];
       
       return relevantComponents.length > 0 ? { ...item, components: relevantComponents } : null;
     }).filter(Boolean) || [];
@@ -159,7 +205,7 @@ export const updateComponentStatus = (team, orderNumber, componentId, newStatus)
   return updated;
 };
 
-export const initializeLocalStorage = async (team, filterOrderFn) => {
+export const initializeLocalStorage = async (team, filterOrderFn, forPrinting = false) => {
   const storageKey = getStorageKey(team);
   
   try {
@@ -176,11 +222,16 @@ export const initializeLocalStorage = async (team, filterOrderFn) => {
     
     setLocalStorageData(storageKey, filteredOrders);
 
+    // Use the updated splitOrdersByTeamStatus with printing context
+    const splitFunction = forPrinting ? 
+      (orders) => splitOrdersByTeamStatusForPrinting(orders, team) : 
+      (orders) => splitOrdersByTeamStatus(orders, team);
+
     const {
       inProgressOrders,
       readyToDispatchOrders,
       dispatchedOrders
-    } = splitOrdersByTeamStatus(filteredOrders, team);
+    } = splitFunction(filteredOrders);
     
     return {
       allOrders: filteredOrders,
@@ -191,6 +242,65 @@ export const initializeLocalStorage = async (team, filterOrderFn) => {
   } catch (error) {
     throw error;
   }
+};
+
+
+export const splitOrdersByTeamStatusForPrinting = (orders, team) => {
+  const inProgressOrders = [];
+  const readyToDispatchOrders = [];
+  const dispatchedOrders = [];
+
+  orders.forEach(order => {
+    const inProgressItems = [];
+    const readyToDispatchItems = [];
+    const dispatchedItems = [];
+
+    order.items.forEach(item => {
+      const inProgressComponents = [];
+      const readyToDispatchComponents = [];
+      const dispatchedComponents = [];
+
+      item.components.forEach(component => {
+        if (component.component_type === 'glass' && component.decorations?.printing) {
+          const printingStatus = component.decorations.printing.status;
+          
+          if (printingStatus === "IN_PROGRESS" || printingStatus === "PENDING") {
+            inProgressComponents.push(component);
+          } else if (printingStatus === "READY_TO_DISPATCH") {
+            readyToDispatchComponents.push(component);
+          } else if (printingStatus === "DISPATCHED") {
+            dispatchedComponents.push(component);
+          }
+        }
+      });
+
+      if (inProgressComponents.length > 0) {
+        inProgressItems.push({ ...item, components: inProgressComponents });
+      }
+      if (readyToDispatchComponents.length > 0) {
+        readyToDispatchItems.push({ ...item, components: readyToDispatchComponents });
+      }
+      if (dispatchedComponents.length > 0) {
+        dispatchedItems.push({ ...item, components: dispatchedComponents });
+      }
+    });
+
+    if (inProgressItems.length > 0) {
+      inProgressOrders.push({ ...order, items: inProgressItems });
+    }
+    if (readyToDispatchItems.length > 0) {
+      readyToDispatchOrders.push({ ...order, items: readyToDispatchItems });
+    }
+    if (dispatchedItems.length > 0) {
+      dispatchedOrders.push({ ...order, items: dispatchedItems });
+    }
+  });
+
+  return {
+    inProgressOrders,
+    readyToDispatchOrders,
+    dispatchedOrders
+  };
 };
 
 export const getAllOrdersForTeam = (team) => {
@@ -237,6 +347,6 @@ export const updateOrderInLocalStorage = (team, updatedOrder) => {
     allOrders[orderIndex] = mergedOrder;
     setLocalStorageData(storageKey, allOrders);
   } catch {
-    // Fail silently
+ 
   }
 };

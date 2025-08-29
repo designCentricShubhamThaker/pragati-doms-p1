@@ -464,10 +464,7 @@ const UpdateBottleQty = ({ isOpen, onClose, orderData, itemData, stockQuantities
 
                 return (
                   <div key={assignment.component_id} className="mb-4 last:mb-0">
-                    {/* Debug info - remove in production */}
-                    <div className="text-xs text-gray-500 mb-2 p-2 bg-gray-100 rounded">
-                      Debug: data_code = {assignment.data_code}, component_id = {assignment.component_id}
-                    </div>
+                   
 
                     <div className={`hidden lg:block border-b border-orange-100 px-6 py-4 ${bgColor} -mx-6`}>
                       <div className="grid gap-4 text-sm items-center"
@@ -478,7 +475,7 @@ const UpdateBottleQty = ({ isOpen, onClose, orderData, itemData, stockQuantities
                         <div className="text-left">
                           <div className="font-medium text-orange-900">{assignment.name}</div>
                           <div className="text-xs text-gray-600">
-                            ID: {assignment.component_id}
+                            ID: {assignment.deco_sequence}
                           </div>
                         </div>
 

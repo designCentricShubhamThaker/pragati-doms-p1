@@ -4,6 +4,7 @@ import OrderTable from "./components/OrderTable.jsx";
 import UpdatePrintingQty from './components/UpdatePrintingQty.jsx';
 import { getLocalStorageData, getStorageKey, initializeLocalStorage, getOrdersByStatus } from '../../utils/orderStorage.jsx';
 import Pagination from '../../utils/Pagination.jsx';
+import VehicleDetails from './components/VehicleDetails.jsx';
 
 const PrintingOrders = ({
   orderType = 'in_progress',
@@ -20,30 +21,42 @@ const PrintingOrders = ({
   const [showModal, setShowModal] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [selectedItem, setSelectedItem] = useState(null);
+  const [showVehicleModal, setShowVehicleModal] = useState(false);
 
   const ordersPerPage = 5;
-  const TEAM = 'glass';
+  const TEAM = 'glass'; // Keep glass as storage key but filter for printing
   const STORAGE_KEY = getStorageKey(TEAM);
 
   const { orders } = globalState;
   const currentOrders = orders || [];
 
-  const FilterGlassOrders = useCallback((items) => {
+  const FilterPrintingOrders = useCallback((items) => {
     return items.filter(item =>
       Array.isArray(item.components) &&
-      item.components.some(component => component.component_type === "glass")
+      item.components.some(component =>
+        component.component_type === "glass" &&
+        component.decorations &&
+        component.decorations.printing
+      )
     );
   }, []);
 
-  const getRemainingQty = useCallback((component) => {
-    if (!component || !component.qty) return 'N/A';
-    if (component.status === 'ready_to_dispatch') return 0;
+  const getPrintingStatus = (component) => {
+    return component?.decorations?.printing?.status ?? 'N/A';
+  };
 
-    const totalQuantity = component.qty || 0;
-    const completedQty = component.completed_qty || 0;
-    const remaining = totalQuantity - completedQty;
+  const getRemainingQty = (component) => {
+    const printing = component?.decorations?.printing;
+    if (!printing) return 'N/A';
+    if (['READY_TO_DISPATCH', 'DISPATCHED'].includes(printing.status)) return 0;
+    return Math.max(0, (printing.qty ?? 0) - (printing.completed_qty ?? 0));
+  };
 
-    return Math.max(0, remaining);
+  const hasValidPrintingComponent = useCallback((item) => {
+    return item.components?.some(component =>
+      component.decorations?.printing &&
+      component.deco_sequence?.includes('printing')
+    );
   }, []);
 
   const handleClose = useCallback(() => {
@@ -52,11 +65,27 @@ const PrintingOrders = ({
     setSelectedItem(null);
   }, []);
 
-   const handleCopyGlassName = useCallback((componentName) => {
-      setSearchTerm(componentName);
-      setCurrentPage(1);
-    }, []);
-  
+  const handleCopyGlassName = useCallback((componentName) => {
+    setSearchTerm(componentName);
+    setCurrentPage(1);
+  }, []);
+
+  const handleVehicleModalOpen = useCallback((order, item) => {
+    setSelectedOrder(order);
+    setSelectedItem(item);
+    setShowVehicleModal(true);
+  }, []);
+
+  const handleVehicleModalClose = useCallback(() => {
+    setShowVehicleModal(false);
+    setSelectedOrder(null);
+    setSelectedItem(null);
+  }, []);
+
+  const handleLocalOrderUpdate = useCallback((orderNumber, item_id, component_id, updatedComponent, newStatus, itemChanges = {}, orderChanges = {}) => {
+    onOrderUpdate(orderNumber, item_id, component_id, updatedComponent, newStatus, itemChanges, orderChanges);
+    handleClose();
+  }, [onOrderUpdate, handleClose]);
 
   useEffect(() => {
     const loadOrders = async () => {
@@ -69,12 +98,14 @@ const PrintingOrders = ({
         const allStoredOrders = getLocalStorageData(STORAGE_KEY);
 
         if (allStoredOrders && allStoredOrders.length > 0) {
-          ordersToLoad = getOrdersByStatus(TEAM, orderType);
+          // Use modified function with printing flag
+          ordersToLoad = getOrdersByStatus(TEAM, orderType, true);
           if (orderType === "in_progress") {
             ordersToLoad = ordersToLoad.filter(order => order.order_status !== "PENDING_PI");
           }
         } else {
-          const initialized = await initializeLocalStorage(TEAM, FilterGlassOrders);
+          // Initialize with printing flag
+          const initialized = await initializeLocalStorage(TEAM, FilterPrintingOrders, true);
 
           if (orderType === "in_progress") {
             ordersToLoad = (initialized.inProgressOrders || []).filter(
@@ -104,14 +135,21 @@ const PrintingOrders = ({
     refreshOrders(orderType);
   }, [refreshOrders, orderType]);
 
-  // Filtered orders based on search
   const filteredOrders = useMemo(() => {
-    if (!searchTerm.trim()) return Array.isArray(currentOrders) ? currentOrders : [];
+    if (!searchTerm.trim()) {
+      return (Array.isArray(currentOrders) ? currentOrders : []).filter(order =>
+        order.items?.some(item => hasValidPrintingComponent(item))
+      );
+    }
 
     const searchLower = searchTerm.toLowerCase();
     let results = [];
 
     currentOrders?.forEach(order => {
+      // Only process orders that have printing components
+      const hasValidPrinting = order.items?.some(item => hasValidPrintingComponent(item));
+      if (!hasValidPrinting) return;
+
       if (
         order.order_number?.toLowerCase().includes(searchLower) ||
         order.customer_name?.toLowerCase().includes(searchLower) ||
@@ -122,13 +160,16 @@ const PrintingOrders = ({
       }
 
       order.items?.forEach(item => {
+        if (!hasValidPrintingComponent(item)) return;
+
         if (item.item_name?.toLowerCase().includes(searchLower)) {
           results.push({ ...order, items: [item] });
           return;
         }
 
         const matchedComponents = item.components?.filter(c =>
-          c.name?.toLowerCase().includes(searchLower)
+          c.name?.toLowerCase().includes(searchLower) &&
+          c.decorations?.printing
         ) || [];
 
         if (matchedComponents.length > 0) {
@@ -141,7 +182,16 @@ const PrintingOrders = ({
     });
 
     return results;
-  }, [currentOrders, searchTerm]);
+  }, [currentOrders, searchTerm, hasValidPrintingComponent]);
+
+  
+  const handleEditClick = useCallback((order, item) => {
+    setSelectedOrder(order);
+    setSelectedItem(item);
+    setShowModal(true)
+  
+  }, []);
+
 
   const paginatedOrders = useMemo(() => {
     const indexOfLastOrder = currentPage * ordersPerPage;
@@ -151,123 +201,77 @@ const PrintingOrders = ({
 
   const totalPages = Math.ceil(filteredOrders.length / ordersPerPage);
 
-  const getStatusStyle = useCallback((status) => {
-    if (!status) return 'text-gray-500';
-    const normalizedStatus = status.toString().toUpperCase();
+  const getStatusStyle = useCallback((component) => {
+    const printingStatus = getPrintingStatus(component);
+    if (!printingStatus) return 'text-gray-500';
+
+    const normalizedStatus = printingStatus.toString().toUpperCase();
     switch (normalizedStatus) {
       case 'COMPLETED':
+      case 'READY_TO_DISPATCH':
+      case 'DISPATCHED':
         return 'text-green-900 font-semibold';
       case 'IN_PROGRESS':
-      case 'PENDING':
         return 'text-orange-600 font-semibold';
-      case 'PENDING_PI':
+      case 'PENDING':
         return 'text-gray-600 font-semibold';
       default:
         return 'text-gray-500';
     }
   }, []);
 
-  const formatStatusLabel = useCallback((status) => {
-    if (!status) return 'N/A';
-    return status
+  const formatStatusLabel = useCallback((component) => {
+    const printingStatus = getPrintingStatus(component);
+    if (!printingStatus) return 'N/A';
+
+    return printingStatus
       .toString()
       .replace(/_/g, ' ')
       .toLowerCase()
       .replace(/\b\w/g, (c) => c.toUpperCase());
   }, []);
 
-  const toggleRowExpansion = useCallback((rowId) => {
-    setExpandedRows(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(rowId)) {
-        newSet.delete(rowId);
-      } else {
-        newSet.add(rowId);
-      }
-      return newSet;
-    });
-  }, []);
-
-  const handlePageChange = useCallback((page) => {
-    setCurrentPage(page);
-  }, []);
-
-  const handleEditClick = useCallback((order, item) => {
-    setSelectedOrder(order);
-    setSelectedItem(item);
-    setShowModal(true);
-  }, []);
-
-  const handleSearchCustomer = useCallback((customerName) => {
-    setSearchTerm(customerName);
-    setCurrentPage(1);
-  }, []);
-
-  const handleSearchManager = useCallback((managerName) => {
-    setSearchTerm(managerName);
-    setCurrentPage(1);
-  }, []);
-
-  const handleLocalOrderUpdate = useCallback((orderNumber, item_id, component_id, updatedComponent, newStatus, itemChanges = {}, orderChanges = {}) => {
-    onOrderUpdate(orderNumber, item_id, component_id, updatedComponent, newStatus, itemChanges, orderChanges);
-    handleClose();
-  }, [onOrderUpdate, handleClose]);
-
-  if (loading) {
+  if (loading && currentOrders.length === 0) {
     return (
-      <div className="flex items-center justify-center py-16">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-600"></div>
-        <div className="ml-4 text-gray-600">Loading orders...</div>
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-600"></div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="flex flex-col items-center justify-center py-16 px-4">
-        <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mb-4">
-          <Package className="w-8 h-8 text-red-400" />
-        </div>
-        <h3 className="text-lg font-medium text-gray-900 mb-2">Error loading orders</h3>
-        <p className="text-sm text-red-500 text-center">{error}</p>
+      <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+        <p className="text-red-600">Error loading orders: {error}</p>
       </div>
     );
   }
 
   return (
     <div className="p-5 max-w-full overflow-hidden">
-      {/* Search Input */}
-      <div className="mb-4">
-        <input
-          type="text"
-          placeholder="Search orders..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
-        />
-      </div>
-
       <OrderTable
         currentOrders={paginatedOrders}
-        orderType={orderType}
-        getRemainingQty={getRemainingQty}
-        handleEditClick={handleEditClick}
-        handleSearchCustomer={handleSearchCustomer}
-        handleSearchManager={handleSearchManager}
         expandedRows={expandedRows}
-        toggleRowExpansion={toggleRowExpansion}
+        setExpandedRows={setExpandedRows}
+        searchTerm={searchTerm}
+        setSearchTerm={setSearchTerm}
+        handleCopyGlassName={handleCopyGlassName}
+        handleEditClick={handleEditClick}
+        getRemainingQty={getRemainingQty}
         getStatusStyle={getStatusStyle}
         formatStatusLabel={formatStatusLabel}
+        setShowModal={setShowModal}
+        setSelectedOrder={setSelectedOrder}
+        setSelectedItem={setSelectedItem}
+        orderType={orderType}
+        handleVehicleModalOpen={handleVehicleModalOpen}
+        getPrintingStatus={getPrintingStatus}
       />
 
       <Pagination
         currentPage={currentPage}
         totalPages={totalPages}
-        ordersPerPage={ordersPerPage}
-        filteredOrders={filteredOrders}
-        orders={currentOrders}
-        searchTerm={searchTerm}
-        handlePageChange={handlePageChange}
+        onPageChange={setCurrentPage}
       />
 
       {showModal && selectedOrder && selectedItem && (
@@ -276,7 +280,18 @@ const PrintingOrders = ({
           onClose={handleClose}
           orderData={selectedOrder}
           itemData={selectedItem}
+          onOrderUpdate={onOrderUpdate}
+        />
+      )}
+
+      {showVehicleModal && selectedOrder && selectedItem && (
+        <VehicleDetails
+          isOpen={showVehicleModal}
+          onClose={handleVehicleModalClose}
+          orderData={selectedOrder}
+          itemData={selectedItem}
           onUpdate={handleLocalOrderUpdate}
+
         />
       )}
     </div>

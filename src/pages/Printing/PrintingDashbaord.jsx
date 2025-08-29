@@ -25,7 +25,7 @@ const PrintingDashbaord = ({ isEmbedded = false }) => {
 
   useEffect(() => {
     if (!socket) return;
-    socket.emit("joinRoom", "printing");
+    socket.emit("joinRoom", "glass");
   }, [socket]);
 
 
@@ -78,7 +78,7 @@ const PrintingDashbaord = ({ isEmbedded = false }) => {
             : item
         ),
       };
-      updateOrderInLocalStorage(glass, updatedOrder);
+      updateOrderInLocalStorage(team, updatedOrder);
       setGlobalState(prev => ({
         ...prev,
         refreshOrders: prev.refreshOrders + 1,
@@ -88,8 +88,6 @@ const PrintingDashbaord = ({ isEmbedded = false }) => {
     },
     []
   );
-
-
 
   const handleOrdersUpdate = useCallback((newOrders) => {
     setGlobalState(prev => ({
@@ -124,8 +122,6 @@ const PrintingDashbaord = ({ isEmbedded = false }) => {
 
 
   ];
-
-
 
 
   const refreshOrders = useCallback((orderType) => {

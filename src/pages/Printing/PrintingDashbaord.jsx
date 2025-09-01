@@ -23,8 +23,6 @@ const PrintingDashbaord = ({ isEmbedded = false }) => {
     refreshOrders: 0
   });
 
-
-
   const handleOrderUpdate = useCallback(
     (
       orderNumber,
@@ -45,7 +43,7 @@ const PrintingDashbaord = ({ isEmbedded = false }) => {
         orderChanges,
       });
 
-      const team = "glass";
+      const team = "printing";
       const STORAGE_KEY = getStorageKey(team);
       let allOrders = getLocalStorageData(STORAGE_KEY) || [];
 
@@ -85,7 +83,9 @@ const PrintingDashbaord = ({ isEmbedded = false }) => {
     []
   );
 
+
   const handleOrdersUpdate = useCallback((newOrders) => {
+
     setGlobalState(prev => ({
       ...prev,
       orders: newOrders,
@@ -93,36 +93,34 @@ const PrintingDashbaord = ({ isEmbedded = false }) => {
     }));
   }, []);
 
-   useEffect(() => {
-  if (!socket) return;
+  useEffect(() => {
+    if (!socket) return;
 
-  socket.emit("joinRoom", "printing"); // Should be "printing", not "glass"
+    socket.emit("joinRoom", "printing");
 
-  // ADD THIS MISSING LISTENER - this is what triggers the refresh
-  const handlePrintingProductionUpdated = ({ order_number, item_id, component_id, updatedComponent }) => {
-    console.log("📢 Printing production update received:", order_number, item_id, component_id, updatedComponent);
-    handleOrderUpdate(order_number, item_id, component_id, updatedComponent, updatedComponent?.status);
-  };
+    const handlePrintingProductionUpdated = ({ order_number, item_id, component_id, updatedComponent }) => {
+      console.log("📢 Printing production update received:", order_number, item_id, component_id, updatedComponent);
+      handleOrderUpdate(order_number, item_id, component_id, updatedComponent, updatedComponent?.status);
+    };
 
-  // ADD THIS LISTENER
-  socket.on("printingProductionUpdated", handlePrintingProductionUpdated);
 
-  return () => {
-    // ADD THIS CLEANUP
-    socket.off("printingProductionUpdated", handlePrintingProductionUpdated);
-  };
-}, [socket, handleOrderUpdate])
+    socket.on("printingProductionUpdated", handlePrintingProductionUpdated);
+
+    return () => {
+      socket.off("printingProductionUpdated", handlePrintingProductionUpdated);
+    };
+  }, [socket, handleOrderUpdate])
 
 
   const handleLogout = useCallback(() => {
     console.log('Logout clicked');
     localStorage.clear();
     setGlobalState({
-  
+
       orders: [],
       loading: false,
       error: null,
-   
+
       dataVersion: 0
     });
   }, []);
@@ -142,7 +140,7 @@ const PrintingDashbaord = ({ isEmbedded = false }) => {
 
 
   const refreshOrders = useCallback((orderType) => {
-    const TEAM = "glass";
+    const TEAM = "printing";
     const ordersToLoad = getOrdersByStatus(TEAM, orderType);
 
     if (orderType === "in_progress") {
@@ -159,12 +157,9 @@ const PrintingDashbaord = ({ isEmbedded = false }) => {
     const commonProps = {
       globalState,
       onOrderUpdate: handleOrderUpdate,
-     
       onOrdersUpdate: handleOrdersUpdate,
       refreshOrders
     };
-
-
 
     switch (activeMenuItem) {
       case 'liveOrders':
@@ -173,7 +168,7 @@ const PrintingDashbaord = ({ isEmbedded = false }) => {
         return <PrintingOrders orderType='ready_to_dispatch' {...commonProps} />;
       case 'dispatched':
         return <PrintingOrders orderType='dispatched' {...commonProps} />;
-      
+
       default:
         return (
           <div className="p-4">

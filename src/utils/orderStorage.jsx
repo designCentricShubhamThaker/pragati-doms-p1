@@ -110,6 +110,7 @@ export const splitOrdersByTeamStatus = (orders, team) => {
     dispatchedOrders
   };
 };
+
 export const getOrdersByStatus = (team, status, forPrinting = false) => {
   const storageKey = getStorageKey(team);
   const allOrders = getLocalStorageData(storageKey) || [];
@@ -166,6 +167,7 @@ export const getOrdersByStatus = (team, status, forPrinting = false) => {
     return filteredItems.length > 0 ? { ...order, items: filteredItems } : null;
   }).filter(Boolean);
 };
+
 
 export const updateOrderInStorage = (team, updatedOrder) => {
   const storageKey = getStorageKey(team);
@@ -309,6 +311,7 @@ export const getAllOrdersForTeam = (team) => {
 };
 
 export const updateOrderInLocalStorage = (team, updatedOrder) => {
+  console.log("updated order",updatedOrder)
   try {
     const storageKey = getStorageKey(team);
     const stored = getLocalStorageData(storageKey);
@@ -343,7 +346,7 @@ export const updateOrderInLocalStorage = (team, updatedOrder) => {
         };
       })
     };
-
+    console.log(mergedOrder,"merged ")
     allOrders[orderIndex] = mergedOrder;
     setLocalStorageData(storageKey, allOrders);
   } catch {

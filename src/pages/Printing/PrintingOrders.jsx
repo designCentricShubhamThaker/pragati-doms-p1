@@ -25,10 +25,10 @@ const PrintingOrders = ({
   const [showVehicleModal, setShowVehicleModal] = useState(false);
 
   const ordersPerPage = 5;
-  const TEAM = 'glass'; // Keep glass as storage key but filter for printing
+  const TEAM = 'printing'; // Keep glass as storage key but filter for printing
   const STORAGE_KEY = getStorageKey(TEAM);
 
-  const { orders } = globalState;
+  const { orders,dataVersion } = globalState;
   const currentOrders = orders || [];
 
   const FilterPrintingOrders = useCallback((items) => {
@@ -45,18 +45,18 @@ const PrintingOrders = ({
   const getPrintingStatus = (component) => {
     return component?.decorations?.printing?.status ?? 'N/A';
   };
-const getRemainingQty = useCallback((component) => {
-  const printing = component?.decorations?.printing;
-  if (!printing || !printing.qty) return 'N/A';
+  const getRemainingQty = useCallback((component) => {
+    const printing = component?.decorations?.printing;
+    if (!printing || !printing.qty) return 'N/A';
 
-  if (printing.status === 'ready_to_dispatch') return 0;
+    if (printing.status === 'ready_to_dispatch') return 0;
+    const totalQuantity = printing.qty || 0;
+    const completedQty = printing.completed_qty || 0;
 
-  const totalQuantity = printing.qty || 0;
-  const completedQty = printing.completed_qty || 0;
-  const remaining = totalQuantity - completedQty;
+    const remaining = totalQuantity - completedQty;
 
-  return Math.max(0, remaining);
-}, []);
+    return Math.max(0, remaining);
+  }, [dataVersion]);
 
   const hasValidPrintingComponent = useCallback((item) => {
     return item.components?.some(component =>
@@ -103,15 +103,14 @@ const getRemainingQty = useCallback((component) => {
         let ordersToLoad = [];
 
         const allStoredOrders = getLocalStorageData(STORAGE_KEY);
-
         if (allStoredOrders && allStoredOrders.length > 0) {
-          // Use modified function with printing flag
-          ordersToLoad = getOrdersByStatus(TEAM, orderType, true);
+          ordersToLoad = getOrdersByStatus(TEAM, orderType, true ,allStoredOrders);
           if (orderType === "in_progress") {
             ordersToLoad = ordersToLoad.filter(order => order.order_status !== "PENDING_PI");
+         
           }
         } else {
-          // Initialize with printing flag
+
           const initialized = await initializeLocalStorage(TEAM, FilterPrintingOrders, true);
 
           if (orderType === "in_progress") {
@@ -148,12 +147,9 @@ const getRemainingQty = useCallback((component) => {
         order.items?.some(item => hasValidPrintingComponent(item))
       );
     }
-
     const searchLower = searchTerm.toLowerCase();
     let results = [];
-
     currentOrders?.forEach(order => {
-      // Only process orders that have printing components
       const hasValidPrinting = order.items?.some(item => hasValidPrintingComponent(item));
       if (!hasValidPrinting) return;
 

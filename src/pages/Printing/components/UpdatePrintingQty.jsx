@@ -16,7 +16,7 @@ const UpdatePrintingQty = ({ isOpen, onClose, orderData, itemData, onUpdate }) =
         .filter(component => component.component_type === "glass")
         .map(bottle => ({
           ...bottle,
-          todayQty: bottle.completed_qty || 0,
+          todayQty: "",
           notes: ''
         }));
 
@@ -29,7 +29,7 @@ const UpdatePrintingQty = ({ isOpen, onClose, orderData, itemData, onUpdate }) =
   const handleQuantityChange = (assignmentIndex, value) => {
     const newAssignments = [...assignments];
     const inputQty = value === "" ? 0 : parseInt(value, 10) || 0;
-    
+
     newAssignments[assignmentIndex].todayQty = inputQty;
     setAssignments(newAssignments);
     setError(null);
@@ -42,7 +42,7 @@ const UpdatePrintingQty = ({ isOpen, onClose, orderData, itemData, onUpdate }) =
   };
 
   const calculateProgress = (bottle) => {
-    const completed = bottle.todayQty || 0;
+    const completed = (bottle.completed_qty || 0) + (bottle.todayQty || 0);
     const total = bottle.qty || 0;
     return total > 0 ? Math.min((completed / total) * 100, 100) : 0;
   };
@@ -67,65 +67,67 @@ const UpdatePrintingQty = ({ isOpen, onClose, orderData, itemData, onUpdate }) =
     );
   };
 
-  const handleSave = async () => {
-    try {
-      setLoading(true);
-      setError(null);
+const handleSave = async () => {
+  try {
+    setLoading(true);
+    setError(null);
 
-      const updates = assignments
-        .filter(assignment => assignment.todayQty > 0)
-        .map(assignment => ({
-          component_data_code: assignment.data_code,
-          component_id: assignment.component_id,
-          total_completed: assignment.todayQty,
-          notes: assignment.notes || '',
-          date: new Date().toISOString()
-        }));
+    const updates = assignments
+      .filter(assignment => assignment.todayQty > 0)
+      .map(assignment => ({
+        component_id: assignment.component_id,
+        quantity_produced: assignment.todayQty,
+        username: 'printing_admin',
+        notes: assignment.notes || 'qty produced',
+        date: new Date().toISOString()
+      }));
 
-      if (updates.length === 0) {
-        setError('Please enter quantity for at least one bottle');
-        setLoading(false);
-        return;
-      }
-
-      for (let update of updates) {
-        const payload = {
-          order_number: orderData.order_number,
-          item_id: itemData?.item_id,
-          component_id: update.component_id,
-          component_data_code: update.component_data_code,
-          updateData: {
-            date: update.date,
-            total_completed: update.total_completed,
-            notes: update.notes
-          }
-        };
-
-        socket.emit("updateGlassProduction", payload);
-
-        socket.once("glassProductionUpdatedSelf", ({ order_number, item_id, component_id, updatedComponent }) => {
-          console.log("✅ Production updated:", order_number, item_id, component_id, updatedComponent);
-          onUpdate(order_number, item_id, component_id, updatedComponent, updatedComponent?.status);
-        });
-
-        socket.once("glassProductionError", (error) => {
-          console.error("❌ Glass update failed:", error);
-          setError(error || "Glass update failed");
-        });
-      }
-
-      setSuccessMessage("Quantities updated successfully!");
-      setTimeout(() => {
-        onClose();
-      }, 1500);
-
-    } catch (err) {
-      console.error("Error updating quantities:", err);
-      setError(err.message || "Failed to update quantities");
-    } finally {
+    if (updates.length === 0) {
+      setError('Please enter quantity for at least one bottle');
       setLoading(false);
+      return;
     }
-  };
+
+    // Emit updates with individual listeners (like glass code)
+    for (let update of updates) {
+      const payload = {
+        team: "printing",
+        order_number: orderData.order_number,
+        item_id: itemData?.item_id,
+        component_id: update.component_id,
+        updateData: {
+          date: update.date,
+          username: "printing_admin", 
+          quantity_produced: update.quantity_produced,
+          notes: update.notes
+        }
+      };
+
+      socket.emit("updatePrintingProduction", payload);
+
+      // Individual listeners for each update (same pattern as glass)
+      socket.once("printingProductionUpdatedSelf", ({ order_number, item_id, component_id, updatedComponent }) => {
+        console.log("✅ Production updated:", order_number, item_id, component_id, updatedComponent);
+        onUpdate(order_number, item_id, component_id, updatedComponent, updatedComponent?.status);
+      });
+
+      socket.once("printingProductionError", (error) => {
+        console.error("❌ Printing update failed:", error);
+        setError(error || "Printing update failed");
+      });
+    }
+
+    setSuccessMessage("Quantities updated successfully!");
+    setTimeout(() => {
+      onClose();
+    }, 1500);
+
+  } catch (err) {
+    console.error("Error updating quantities:", err);
+    setError(err.message || "Failed to update quantities");
+    setLoading(false);
+  }
+};
 
   return (
     <Dialog open={isOpen} onClose={onClose}>
@@ -189,7 +191,7 @@ const UpdatePrintingQty = ({ isOpen, onClose, orderData, itemData, onUpdate }) =
 
                 return (
                   <div key={assignment.component_id} className="mb-4 last:mb-0">
-                    
+
                     {/* Desktop Layout */}
                     <div className={`hidden lg:block border-b border-orange-100 px-6 py-4 ${bgColor} -mx-6`}>
                       <div className="grid gap-4 text-sm items-center"
@@ -219,7 +221,7 @@ const UpdatePrintingQty = ({ isOpen, onClose, orderData, itemData, onUpdate }) =
                         <div className="px-2">
                           <ProgressBar assignment={assignment} />
                           <div className="text-xs text-gray-500 mt-1 text-center">
-                            {assignment.todayQty || 0} / {assignment.qty}
+                            {(assignment.completed_qty || 0) + (assignment.todayQty || 0)} / {assignment.qty}
                           </div>
                         </div>
 
@@ -252,7 +254,7 @@ const UpdatePrintingQty = ({ isOpen, onClose, orderData, itemData, onUpdate }) =
                           <h4 className="font-medium text-orange-900 text-sm sm:text-base">{assignment.name}</h4>
                           <p className="text-xs text-gray-600 mt-1">ID: {assignment.component_id}</p>
                         </div>
-                        
+
                         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs sm:text-sm">
                           <div>
                             <span className="text-gray-600">Size:</span>
@@ -272,7 +274,7 @@ const UpdatePrintingQty = ({ isOpen, onClose, orderData, itemData, onUpdate }) =
                           <div className="flex justify-between items-center mb-2">
                             <span className="text-xs text-gray-600">Progress:</span>
                             <span className="text-xs text-gray-500">
-                              {assignment.todayQty || 0} / {assignment.qty}
+                              {(assignment.completed_qty || 0) + (assignment.todayQty || 0)} / {assignment.qty}
                             </span>
                           </div>
                           <ProgressBar assignment={assignment} />

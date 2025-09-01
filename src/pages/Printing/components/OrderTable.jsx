@@ -225,7 +225,7 @@ const OrderTable = ({
 
                       <div className="text-center col-span-2">
                         <button
-                          onClick={() => handleVehicleModalOpen(order, item)}
+                          onClick={() => handleVehicleModalOpen(order, item, glass.component_id)}
                           className="p-1.5 rounded text-white"
                         >
                           {glass.vehicle_details?.length > 0 && glass.vehicle_details.every(v => v.status === "DELIVERED") ? (

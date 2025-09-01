@@ -23,10 +23,6 @@ const PrintingDashbaord = ({ isEmbedded = false }) => {
     refreshOrders: 0
   });
 
-  useEffect(() => {
-    if (!socket) return;
-    socket.emit("joinRoom", "glass");
-  }, [socket]);
 
 
   const handleOrderUpdate = useCallback(
@@ -96,6 +92,27 @@ const PrintingDashbaord = ({ isEmbedded = false }) => {
       dataVersion: prev.dataVersion + 1
     }));
   }, []);
+
+   useEffect(() => {
+  if (!socket) return;
+
+  socket.emit("joinRoom", "printing"); // Should be "printing", not "glass"
+
+  // ADD THIS MISSING LISTENER - this is what triggers the refresh
+  const handlePrintingProductionUpdated = ({ order_number, item_id, component_id, updatedComponent }) => {
+    console.log("📢 Printing production update received:", order_number, item_id, component_id, updatedComponent);
+    handleOrderUpdate(order_number, item_id, component_id, updatedComponent, updatedComponent?.status);
+  };
+
+  // ADD THIS LISTENER
+  socket.on("printingProductionUpdated", handlePrintingProductionUpdated);
+
+  return () => {
+    // ADD THIS CLEANUP
+    socket.off("printingProductionUpdated", handlePrintingProductionUpdated);
+  };
+}, [socket, handleOrderUpdate])
+
 
   const handleLogout = useCallback(() => {
     console.log('Logout clicked');

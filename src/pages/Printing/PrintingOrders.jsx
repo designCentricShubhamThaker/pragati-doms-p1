@@ -21,6 +21,7 @@ const PrintingOrders = ({
   const [showModal, setShowModal] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [selectedItem, setSelectedItem] = useState(null);
+  const [selectedComponentId, setSelectedComponentId] = useState(false)
   const [showVehicleModal, setShowVehicleModal] = useState(false);
 
   const ordersPerPage = 5;
@@ -44,13 +45,18 @@ const PrintingOrders = ({
   const getPrintingStatus = (component) => {
     return component?.decorations?.printing?.status ?? 'N/A';
   };
+const getRemainingQty = useCallback((component) => {
+  const printing = component?.decorations?.printing;
+  if (!printing || !printing.qty) return 'N/A';
 
-  const getRemainingQty = (component) => {
-    const printing = component?.decorations?.printing;
-    if (!printing) return 'N/A';
-    if (['READY_TO_DISPATCH', 'DISPATCHED'].includes(printing.status)) return 0;
-    return Math.max(0, (printing.qty ?? 0) - (printing.completed_qty ?? 0));
-  };
+  if (printing.status === 'ready_to_dispatch') return 0;
+
+  const totalQuantity = printing.qty || 0;
+  const completedQty = printing.completed_qty || 0;
+  const remaining = totalQuantity - completedQty;
+
+  return Math.max(0, remaining);
+}, []);
 
   const hasValidPrintingComponent = useCallback((item) => {
     return item.components?.some(component =>
@@ -70,9 +76,10 @@ const PrintingOrders = ({
     setCurrentPage(1);
   }, []);
 
-  const handleVehicleModalOpen = useCallback((order, item) => {
+  const handleVehicleModalOpen = useCallback((order, item, component = null) => {
     setSelectedOrder(order);
     setSelectedItem(item);
+    setSelectedComponentId(component);
     setShowVehicleModal(true);
   }, []);
 
@@ -184,12 +191,12 @@ const PrintingOrders = ({
     return results;
   }, [currentOrders, searchTerm, hasValidPrintingComponent]);
 
-  
+
   const handleEditClick = useCallback((order, item) => {
     setSelectedOrder(order);
     setSelectedItem(item);
     setShowModal(true)
-  
+
   }, []);
 
 
@@ -280,7 +287,7 @@ const PrintingOrders = ({
           onClose={handleClose}
           orderData={selectedOrder}
           itemData={selectedItem}
-          onOrderUpdate={onOrderUpdate}
+          onUpdate={handleLocalOrderUpdate}
         />
       )}
 
@@ -290,6 +297,7 @@ const PrintingOrders = ({
           onClose={handleVehicleModalClose}
           orderData={selectedOrder}
           itemData={selectedItem}
+          componentId={selectedComponentId}
           onUpdate={handleLocalOrderUpdate}
 
         />

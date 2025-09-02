@@ -15,7 +15,8 @@ const OrderTable = ({
   toggleRowExpansion,
   getStatusStyle,
   formatStatusLabel,
-  handleVehicleModalOpen
+  handleVehicleModalOpen,
+  canEditOrder
 
 }) => {
 
@@ -239,10 +240,18 @@ const OrderTable = ({
 
 
                       <div className="text-center">
-                        {isFirstRowOfOrder && glass ? (
+                        {isFirstRowOfItem && glass ? (
                           <button
                             onClick={() => handleEditClick(order, item)}
-                            className="p-1.5 bg-orange-600 rounded text-white hover:bg-orange-500"
+                            disabled={!canEditOrder(order)}
+                            className={`p-1.5 rounded text-white transition-all ${canEditOrder(order)
+                                ? 'bg-orange-600 hover:bg-orange-500 cursor-pointer'
+                                : 'bg-gray-400 cursor-not-allowed opacity-50'
+                              }`}
+                            title={!canEditOrder(order)
+                              ? 'All components must be decoration approved and have vehicles delivered'
+                              : 'Edit order'
+                            }
                           >
                             <Edit size={14} />
                           </button>
@@ -293,7 +302,15 @@ const OrderTable = ({
                       <h4 className="font-medium text-orange-800 text-sm">{item.item_name}</h4>
                       <button
                         onClick={() => handleEditClick(order, item)}
-                        className="p-2 bg-orange-600 rounded text-white hover:bg-orange-500 transition-colors"
+                        disabled={!canEditOrder(order)}
+                        className={`p-2 rounded text-white transition-colors ${canEditOrder(order)
+                            ? 'bg-orange-600 hover:bg-orange-500'
+                            : 'bg-gray-400 cursor-not-allowed opacity-50'
+                          }`}
+                        title={!canEditOrder(order)
+                          ? 'All components must be decoration approved and have vehicles delivered'
+                          : 'Edit order'
+                        }
                       >
                         <Edit size={14} />
                       </button>

@@ -45,18 +45,49 @@ const PrintingOrders = ({
   const getPrintingStatus = (component) => {
     return component?.decorations?.printing?.status ?? 'N/A';
   };
-  const getRemainingQty = useCallback((component) => {
-    const printing = component?.decorations?.printing;
-    if (!printing || !printing.qty) return 'N/A';
+ const getRemainingQty = useCallback((component) => {
+  const printing = component?.decorations?.printing;
+  if (!printing || !printing.qty) return 'N/A';
 
-    if (printing.status === 'ready_to_dispatch') return 0;
-    const totalQuantity = printing.qty || 0;
-    const completedQty = printing.completed_qty || 0;
+  if (printing.status === 'READY_TO_DISPATCH' || printing.status === 'DISPATCHED') return 0;
+  
+  const totalQuantity = printing.qty || 0;
+  const completedQty = printing.completed_qty || 0;
 
-    const remaining = totalQuantity - completedQty;
+  const remaining = totalQuantity - completedQty;
 
-    return Math.max(0, remaining);
-  }, [dataVersion]);
+  return Math.max(0, remaining);
+}, [globalState?.dataVersion]); 
+const canEditOrder = useCallback((order) => {
+  // Check all components in all items of the order
+  for (const item of order.items || []) {
+    for (const component of item.components || []) {
+      if (component.component_type === "glass" && 
+          component.decorations?.printing && 
+          component.is_deco) {
+        
+        // Check if is_deco_approved is true
+        if (!component.is_deco_approved) {
+          return false;
+        }
+        
+        // Check if all vehicles are delivered
+        if (component.vehicle_details && component.vehicle_details.length > 0) {
+          const allDelivered = component.vehicle_details.every(v => 
+            v.status === "DELIVERED" || v.received === true
+          );
+          if (!allDelivered) {
+            return false;
+          }
+        } else {
+          // If no vehicle details exist, consider it as not ready
+          return false;
+        }
+      }
+    }
+  }
+  return true;
+}, []);
 
   const hasValidPrintingComponent = useCallback((item) => {
     return item.components?.some(component =>
@@ -188,12 +219,16 @@ const PrintingOrders = ({
   }, [currentOrders, searchTerm, hasValidPrintingComponent]);
 
 
-  const handleEditClick = useCallback((order, item) => {
-    setSelectedOrder(order);
-    setSelectedItem(item);
-    setShowModal(true)
-
-  }, []);
+ const handleEditClick = useCallback((order, item) => {
+  if (!canEditOrder(order)) {
+    alert("Cannot edit: All components must be decoration approved and have all vehicles delivered");
+    return;
+  }
+  
+  setSelectedOrder(order);
+  setSelectedItem(item);
+  setShowModal(true);
+}, );
 
 
   const paginatedOrders = useMemo(() => {
@@ -264,6 +299,7 @@ const PrintingOrders = ({
         getStatusStyle={getStatusStyle}
         formatStatusLabel={formatStatusLabel}
         setShowModal={setShowModal}
+        canEditOrder={canEditOrder}
         setSelectedOrder={setSelectedOrder}
         setSelectedItem={setSelectedItem}
         orderType={orderType}

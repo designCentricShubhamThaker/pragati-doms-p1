@@ -2,6 +2,7 @@ import React from 'react';
 import { Package, Edit, Eye, EyeOff } from 'lucide-react'
 import { FcApproval } from "react-icons/fc";
 import { FcCancel } from "react-icons/fc";
+import { hasDecorationForTeam, canTeamWork, getWaitingMessage } from '../../../utils/DecorationSequence.jsx';
 
 const OrderTable = ({
   currentOrders,
@@ -12,13 +13,28 @@ const OrderTable = ({
   handleSearchCustomer,
   handleSearchManager,
   expandedRows,
-  toggleRowExpansion,
+  setExpandedRows, // Add this prop
   getStatusStyle,
   formatStatusLabel,
   handleVehicleModalOpen,
-  canEditOrder
-
+  canEditOrder,
+  handleDispatchClick,
+  canDispatchComponent,
+  teamName = 'printing', // Default to printing
+  getComponentWaitingMessage // Add this prop
 }) => {
+
+  const toggleRowExpansion = (rowId) => {
+    setExpandedRows(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(rowId)) {
+        newSet.delete(rowId);
+      } else {
+        newSet.add(rowId);
+      }
+      return newSet;
+    });
+  };
 
   function sumTrackingKey(tracking, key) {
     return tracking?.reduce((total, entry) => {
@@ -26,7 +42,10 @@ const OrderTable = ({
     }, 0) || 0;
   }
 
-
+  const canDispatchComponentLocal = (component, team) => {
+    const teamStatus = component?.decorations?.[team]?.status;
+    return teamStatus === 'READY_TO_DISPATCH';
+  };
 
   if (currentOrders.length === 0) {
     return (
@@ -35,12 +54,12 @@ const OrderTable = ({
           <Package className="w-8 h-8 text-orange-400" />
         </div>
         <h3 className="text-lg font-medium text-gray-900 mb-2">
-          No {orderType} printing orders found
+          No {orderType} {teamName} orders found
         </h3>
         <p className="text-sm text-gray-500 text-center max-w-sm">
           {orderType === 'pending'
-            ? 'When you receive new printing orders, they will appear here for easy management and tracking.'
-            : 'Completed printing orders will appear here once all printing components in an order are finished.'}
+            ? `When you receive new ${teamName} orders, they will appear here for easy management and tracking.`
+            : `Completed ${teamName} orders will appear here once all ${teamName} components in an order are finished.`}
         </p>
       </div>
     );
@@ -52,7 +71,7 @@ const OrderTable = ({
     <div className="space-y-4">
       <div className="hidden xl:block">
         <div className="bg-gradient-to-r from-orange-800 via-orange-600 to-orange-400 rounded-lg shadow-md py-3 px-4 mb-3">
-          <div className="grid grid-cols-22 gap-1 text-white font-semibold text-xs items-center">
+          <div className={`grid ${orderType === 'ready_to_dispatch' ? 'grid-cols-24' : 'grid-cols-24'} gap-1 text-white font-semibold text-xs items-center`}>
             <div className="text-left col-span-2">Order #</div>
             <div className="text-left col-span-2">Manager</div>
             <div className="text-left col-span-2">Customer</div>
@@ -62,13 +81,21 @@ const OrderTable = ({
             <div className="text-left flex justify-center">Weight</div>
             <div className="text-left flex justify-center">Capacity</div>
             <div className="text-left flex justify-center">Neck Size</div>
-            <div className="text-left">Print Qty</div>
+            <div className="text-left">{teamName.charAt(0).toUpperCase() + teamName.slice(1)} Qty</div>
             <div className="text-left">Remaining</div>
             <div className="text-left flex justify-center">Priority</div>
             <div className="text-left flex justify-center col-span-2">Status</div>
             <div className="text-left flex justify-center">Approval</div>
             <div className="text-left flex justify-center col-span-2">Veh Approval</div>
-            <div className="text-center">Edit</div>
+
+            {orderType === "ready_to_dispatch" && (
+              <div className='text-left flex justify-center '>Dispatch</div>
+            )}
+            {orderType === "in_progress" && (
+                          <div className='text-left flex justify-center col-span-2'>Team Chekk</div>
+            )}
+
+            <div className='text-left flex justify-center ' >Edit</div>
           </div>
         </div>
 
@@ -77,7 +104,7 @@ const OrderTable = ({
           order.items?.forEach((item) => {
             const glasses = item.components?.filter(c => c.component_type === "glass") || [];
             glasses.forEach(glass => {
-              if (glass.is_deco && glass.decorations?.printing) {
+              if (glass.is_deco && hasDecorationForTeam(glass, teamName)) {
                 totalRows += 1;
               }
             });
@@ -95,22 +122,22 @@ const OrderTable = ({
                 const bgColor = colorClasses[itemIndex % colorClasses.length];
 
                 return glasses.map((glass, glassIndex) => {
-                  if (!glass.is_deco || !glass.decorations?.printing) {
+                  if (!glass.is_deco || !hasDecorationForTeam(glass, teamName)) {
                     return null;
                   }
 
-                  const printing = glass.decorations.printing;
+                  const teamDecoration = glass.decorations?.[teamName];
                   const isFirstRowOfOrder = currentRow === 0;
                   const isFirstRowOfItem = glassIndex === 0;
                   currentRow++;
 
                   const remainingQty = getRemainingQty(glass);
-
+                  const { canWork } = canTeamWork(glass, teamName);
 
                   return (
                     <div
-                      key={`${order.order_number}-${item.item_name}-${glass.component_id}-printing`}
-                      className={`grid grid-cols-22 gap-1 items-center py-2 px-3 text-xs ${bgColor}`}
+                      key={`${order.order_number}-${item.item_name}-${glass.component_id}-${teamName}`}
+                      className={`grid ${orderType === 'ready_to_dispatch' ? 'grid-cols-24' : 'grid-cols-24'} gap-1 items-center py-2 px-3 text-xs ${bgColor}`}
                     >
                       <div className="text-left col-span-2">
                         {isFirstRowOfOrder ? (
@@ -125,7 +152,7 @@ const OrderTable = ({
                       <div className="text-left col-span-2">
                         {isFirstRowOfOrder ? (
                           <button
-                            onClick={() => handleSearchManager(order.manager_name)}
+                            onClick={() => handleSearchManager?.(order.manager_name)}
                             className="font-bold text-orange-800 hover:text-orange-600 hover:underline transition-colors cursor-pointer"
                             title="Search by manager name"
                           >
@@ -139,7 +166,7 @@ const OrderTable = ({
                       <div className="text-left col-span-2">
                         {isFirstRowOfOrder ? (
                           <button
-                            onClick={() => handleSearchCustomer(order.customer_name)}
+                            onClick={() => handleSearchCustomer?.(order.customer_name)}
                             className="font-bold text-orange-800 hover:text-orange-600 hover:underline transition-colors cursor-pointer"
                             title="Search by customer name"
                           >
@@ -168,7 +195,7 @@ const OrderTable = ({
 
                       <div className="text-left text-orange-900 col-span-2">
                         <div className="flex items-center gap-1">
-                          <span>{glass.name || 'N/A'} (Print)</span>
+                          <span>{glass.name || 'N/A'} ({teamName.charAt(0).toUpperCase() + teamName.slice(1)})</span>
                           {glass.name && (
                             <button
                               onClick={() => handleCopyGlassName(glass.name)}
@@ -181,6 +208,7 @@ const OrderTable = ({
                             </button>
                           )}
                         </div>
+
                       </div>
 
                       <div className="text-left text-red-900 font-semibold flex justify-center">
@@ -196,7 +224,7 @@ const OrderTable = ({
                       </div>
 
                       <div className="text-left text-orange-900">
-                        {printing.qty || 'N/A'}
+                        {teamDecoration?.qty || 'N/A'}
                       </div>
 
                       <div className="text-left">
@@ -217,7 +245,6 @@ const OrderTable = ({
                         </span>
                       </div>
 
-
                       <div className="text-left flex justify-center col-span-1">
                         <span className={`px-2 py-1 rounded text-xs font-bold cursor-pointer hover:opacity-80 ${glass.is_deco_approved ? 'text-green-800' : 'text-red-800'}`}>
                           {glass.is_deco_approved ? 'Approved' : 'Awaiting'}
@@ -235,18 +262,44 @@ const OrderTable = ({
                             <FcCancel size={20} />
                           )}
                         </button>
-
                       </div>
+
+                      {
+                        orderType === 'ready_to_dispatch' && isFirstRowOfItem && (
+                          <div className="text-center">
+                            {canDispatchComponentLocal(glass, teamName) && (
+                              <button
+                                onClick={() => handleDispatchClick(order, item, glass)}
+                                className="px-2 py-1 bg-green-600 text-white text-xs rounded hover:bg-green-700"
+                              >
+                                Dispatch
+                              </button>
+                            )}
+                          </div>
+                        )
+                      }
+                      {
+                        orderType === "in_progress" && (
+                          <div className='text-center col-span-2'>
+                            {!canWork && getComponentWaitingMessage && (
+                              <div className="text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded mt-1">
+                                {getComponentWaitingMessage(glass)}
+                              </div>
+                            )}
+                          </div>
+                        )
+                      }
+
 
 
                       <div className="text-center">
-                        {isFirstRowOfItem && glass ? (
+                        {isFirstRowOfItem && glass && hasDecorationForTeam(glass, teamName) && (
                           <button
                             onClick={() => handleEditClick(order, item)}
                             disabled={!canEditOrder(order)}
                             className={`p-1.5 rounded text-white transition-all ${canEditOrder(order)
-                                ? 'bg-orange-600 hover:bg-orange-500 cursor-pointer'
-                                : 'bg-gray-400 cursor-not-allowed opacity-50'
+                              ? 'bg-orange-600 hover:bg-orange-500 cursor-pointer'
+                              : 'bg-gray-400 cursor-not-allowed opacity-50'
                               }`}
                             title={!canEditOrder(order)
                               ? 'All components must be decoration approved and have vehicles delivered'
@@ -255,8 +308,6 @@ const OrderTable = ({
                           >
                             <Edit size={14} />
                           </button>
-                        ) : (
-                          <Edit size={12} className="text-transparent" />
                         )}
                       </div>
                     </div>
@@ -268,13 +319,13 @@ const OrderTable = ({
         })}
       </div>
 
+      {/* Mobile view - similar fixes needed */}
       <div className="xl:hidden space-y-4">
         {currentOrders.map((order) => (
           <div
             key={`mobile-order-${order.order_number}`}
             className="bg-white rounded-lg shadow-sm border border-orange-200 overflow-hidden"
           >
-            {/* Order Header */}
             <div className="bg-gradient-to-r from-orange-800 via-orange-600 to-orange-400 px-4 py-3">
               <div className="flex items-center justify-between">
                 <div>
@@ -287,52 +338,62 @@ const OrderTable = ({
               </div>
             </div>
 
-            {/* Items */}
             {order.items?.map((item, itemIndex) => {
               const glasses = item.components?.filter(c => c.component_type === "glass") || [];
-              const printingGlasses = glasses.filter(g => g.is_deco && g.decorations?.printing);
+              const teamGlasses = glasses.filter(g => g.is_deco && hasDecorationForTeam(g, teamName));
               const bgColor = colorClasses[itemIndex % colorClasses.length];
 
-              if (printingGlasses.length === 0) return null;
+              if (teamGlasses.length === 0) return null;
 
               return (
                 <div key={item._id} className={bgColor}>
                   <div className="px-4 py-3">
                     <div className="flex items-center justify-between mb-2">
                       <h4 className="font-medium text-orange-800 text-sm">{item.item_name}</h4>
-                      <button
-                        onClick={() => handleEditClick(order, item)}
-                        disabled={!canEditOrder(order)}
-                        className={`p-2 rounded text-white transition-colors ${canEditOrder(order)
+                      <div className="flex gap-2">
+                        {canDispatchComponentLocal(teamGlasses[0], teamName) && (
+                          <button
+                            onClick={() => handleDispatchClick(order, item, teamGlasses[0])}
+                            className="px-3 py-1 bg-green-600 text-white text-xs rounded hover:bg-green-700"
+                          >
+                            Dispatch
+                          </button>
+                        )}
+                        <button
+                          onClick={() => handleEditClick(order, item)}
+                          disabled={!canEditOrder(order)}
+                          className={`p-2 rounded text-white transition-colors ${canEditOrder(order)
                             ? 'bg-orange-600 hover:bg-orange-500'
                             : 'bg-gray-400 cursor-not-allowed opacity-50'
-                          }`}
-                        title={!canEditOrder(order)
-                          ? 'All components must be decoration approved and have vehicles delivered'
-                          : 'Edit order'
-                        }
-                      >
-                        <Edit size={14} />
-                      </button>
+                            }`}
+                          title={!canEditOrder(order)
+                            ? 'All components must be decoration approved and have vehicles delivered'
+                            : 'Edit order'
+                          }
+                        >
+                          <Edit size={14} />
+                        </button>
+                      </div>
                     </div>
 
-                    {printingGlasses.map((glass) => {
-                      const printing = glass.decorations.printing;
-                      const remainingQty = getRemainingQty(printing);
-                      const status = printing.status;
-                      const rowId = `${order.order_number}-${item.item_name}-${glass.name}-printing`;
+                    {teamGlasses.map((glass) => {
+                      const teamDecoration = glass.decorations?.[teamName];
+                      const remainingQty = getRemainingQty(glass);
+                      const status = teamDecoration?.status;
+                      const rowId = `${order.order_number}-${item.item_name}-${glass.name}-${teamName}`;
                       const isExpanded = expandedRows.has(rowId);
+                      const { canWork } = canTeamWork(glass, teamName);
 
                       return (
                         <div
-                          key={`${glass.component_id}-printing`}
+                          key={`${glass.component_id}-${teamName}`}
                           className="bg-white rounded-lg p-3 shadow-sm mt-2"
                         >
                           <div className="flex items-center justify-between mb-2">
                             <div>
                               <div className="flex items-center gap-1">
                                 <p className="font-medium text-gray-900 text-sm">
-                                  {glass.name || 'N/A'} (Printing)
+                                  {glass.name || 'N/A'} ({teamName.charAt(0).toUpperCase() + teamName.slice(1)})
                                 </p>
                                 {glass.name && (
                                   <button
@@ -340,47 +401,33 @@ const OrderTable = ({
                                     className="p-0.5 text-orange-600 hover:text-orange-800 hover:bg-orange-50 rounded transition-colors"
                                     title="Copy glass name to search"
                                   >
-                                    <svg
-                                      className="h-3 w-3"
-                                      fill="none"
-                                      stroke="currentColor"
-                                      viewBox="0 0 24 24"
-                                    >
-                                      <path
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                        strokeWidth={2}
-                                        d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
-                                      />
+                                    <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
                                     </svg>
                                   </button>
                                 )}
                               </div>
                               <div className="text-xs text-gray-600 mt-1">
-                                Print Qty:{" "}
+                                {teamName.charAt(0).toUpperCase() + teamName.slice(1)} Qty:{" "}
                                 <span className="font-medium text-orange-900">
-                                  {printing.qty ?? 'N/A'}
+                                  {teamDecoration?.qty ?? 'N/A'}
                                 </span>{" "}
                                 | Remaining:{" "}
-                                <span
-                                  className={`font-medium ${remainingQty === 0
-                                    ? "text-green-600"
-                                    : "text-orange-700"
-                                    }`}
-                                >
+                                <span className={`font-medium ${remainingQty === 0 ? "text-green-600" : "text-orange-700"}`}>
                                   {remainingQty}
                                 </span>
                               </div>
+                              {!canWork && getComponentWaitingMessage && (
+                                <div className="text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded mt-1">
+                                  {getComponentWaitingMessage(glass)}
+                                </div>
+                              )}
                             </div>
 
                             <div className="flex items-center gap-2">
                               <div className="text-center">
-                                <span
-                                  className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusStyle(
-                                    status
-                                  )}`}
-                                >
-                                  {formatStatusLabel(status)}
+                                <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusStyle(glass)}`}>
+                                  {formatStatusLabel(glass)}
                                 </span>
                               </div>
 
@@ -408,19 +455,15 @@ const OrderTable = ({
                                 {glass.neck_diameter ?? "N/A"}mm
                               </div>
                               <div>
-                                <span className="text-gray-500">Available Stock:</span>{" "}
-                                {getAvailableStock ? getAvailableStock(glass) : 0}
-                              </div>
-                              <div>
-                                <span className="text-gray-500">Print Inventory Used:</span>{" "}
+                                <span className="text-gray-500">{teamName.charAt(0).toUpperCase() + teamName.slice(1)} Inventory Used:</span>{" "}
                                 <span className="font-semibold text-blue-600">
-                                  {sumTrackingKey(printing.tracking, "stock_used")}
+                                  {sumTrackingKey(teamDecoration?.tracking, "stock_used")}
                                 </span>
                               </div>
                               <div>
-                                <span className="text-gray-500">Print Quantity Produced:</span>{" "}
+                                <span className="text-gray-500">{teamName.charAt(0).toUpperCase() + teamName.slice(1)} Quantity Produced:</span>{" "}
                                 <span className="font-semibold text-green-600">
-                                  {sumTrackingKey(printing.tracking, "quantity_produced")}
+                                  {sumTrackingKey(teamDecoration?.tracking, "quantity_produced")}
                                 </span>
                               </div>
                               <div>

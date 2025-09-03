@@ -12,8 +12,8 @@ const App = () => {
   return (
     <SocketProvider>
       {/* <Dashboard /> */}
-      <GlassDashboard />
-      {/* <PrintingDashbaord /> */}
+      {/* <GlassDashboard /> */}
+      <PrintingDashbaord />
     </SocketProvider>
 
 

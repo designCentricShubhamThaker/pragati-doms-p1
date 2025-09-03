@@ -5,6 +5,13 @@ import UpdatePrintingQty from './components/UpdatePrintingQty.jsx';
 import { getLocalStorageData, getStorageKey, initializeLocalStorage, getOrdersByStatus } from '../../utils/orderStorage.jsx';
 import Pagination from '../../utils/Pagination.jsx';
 import VehicleDetails from './components/VehicleDetails.jsx';
+import {
+  canTeamWork,
+  hasDecorationForTeam,
+  getWaitingMessage,
+  getDecorationStatus
+} from '../../utils/DecorationSequence.jsx';
+import DispatchPrinting from './components/DispatchPrinting.jsx';
 
 const PrintingOrders = ({
   orderType = 'in_progress',
@@ -23,12 +30,14 @@ const PrintingOrders = ({
   const [selectedItem, setSelectedItem] = useState(null);
   const [selectedComponentId, setSelectedComponentId] = useState(false)
   const [showVehicleModal, setShowVehicleModal] = useState(false);
+  const [showDispatchModal, setShowDispatchModal] = useState(false);
+  const [selectedComponentForDispatch, setSelectedComponentForDispatch] = useState(null);
 
   const ordersPerPage = 5;
-  const TEAM = 'printing'; // Keep glass as storage key but filter for printing
+  const TEAM = 'printing';
   const STORAGE_KEY = getStorageKey(TEAM);
 
-  const { orders,dataVersion } = globalState;
+  const { orders, dataVersion } = globalState;
   const currentOrders = orders || [];
 
   const FilterPrintingOrders = useCallback((items) => {
@@ -36,63 +45,87 @@ const PrintingOrders = ({
       Array.isArray(item.components) &&
       item.components.some(component =>
         component.component_type === "glass" &&
-        component.decorations &&
-        component.decorations.printing
+        hasDecorationForTeam(component, 'printing')
       )
     );
   }, []);
 
   const getPrintingStatus = (component) => {
-    return component?.decorations?.printing?.status ?? 'N/A';
+    return getDecorationStatus(component, 'printing');
   };
- const getRemainingQty = useCallback((component) => {
-  const printing = component?.decorations?.printing;
-  if (!printing || !printing.qty) return 'N/A';
 
-  if (printing.status === 'READY_TO_DISPATCH' || printing.status === 'DISPATCHED') return 0;
-  
-  const totalQuantity = printing.qty || 0;
-  const completedQty = printing.completed_qty || 0;
+  const getRemainingQty = useCallback((component) => {
+    const printing = component?.decorations?.printing;
+    if (!printing || !printing.qty) return 'N/A';
 
-  const remaining = totalQuantity - completedQty;
+    if (printing.status === 'READY_TO_DISPATCH' || printing.status === 'DISPATCHED') return 0;
 
-  return Math.max(0, remaining);
-}, [globalState?.dataVersion]); 
-const canEditOrder = useCallback((order) => {
-  // Check all components in all items of the order
-  for (const item of order.items || []) {
-    for (const component of item.components || []) {
-      if (component.component_type === "glass" && 
-          component.decorations?.printing && 
-          component.is_deco) {
-        
-        // Check if is_deco_approved is true
-        if (!component.is_deco_approved) {
-          return false;
-        }
-        
-        // Check if all vehicles are delivered
-        if (component.vehicle_details && component.vehicle_details.length > 0) {
-          const allDelivered = component.vehicle_details.every(v => 
-            v.status === "DELIVERED" || v.received === true
-          );
-          if (!allDelivered) {
+    const totalQuantity = printing.qty || 0;
+    const completedQty = printing.completed_qty || 0;
+
+    const remaining = totalQuantity - completedQty;
+    return Math.max(0, remaining);
+  }, [globalState?.dataVersion]);
+
+  const canEditOrder = useCallback((order) => {
+    // Check all components in all items of the order
+    for (const item of order.items || []) {
+      for (const component of item.components || []) {
+        if (component.component_type === "glass" &&
+          hasDecorationForTeam(component, 'printing')) {
+
+          // Check decoration sequence workflow
+          const { canWork } = canTeamWork(component, 'printing');
+          if (!canWork) {
             return false;
           }
-        } else {
-          // If no vehicle details exist, consider it as not ready
-          return false;
+
+          // Check if is_deco_approved is true
+          if (!component.is_deco_approved) {
+            return false;
+          }
+
+          // Check if all vehicles are delivered
+          if (component.vehicle_details && component.vehicle_details.length > 0) {
+            const allDelivered = component.vehicle_details.every(v =>
+              v.status === "DELIVERED" || v.received === true
+            );
+            if (!allDelivered) {
+              return false;
+            }
+          } else {
+            // If no vehicle details exist, consider it as not ready
+            return false;
+          }
         }
       }
     }
-  }
-  return true;
-}, []);
+    return true;
+  }, []);
+
+  const handleDispatchClick = useCallback((order, item, component) => {
+    const printingStatus = getPrintingStatus(component);
+    if (printingStatus !== 'READY_TO_DISPATCH') {
+      alert('Component must be ready to dispatch');
+      return;
+    }
+
+    setSelectedOrder(order);
+    setSelectedItem(item);
+    setSelectedComponentForDispatch(component);
+    setShowDispatchModal(true);
+  }, [getPrintingStatus]);
+
+  const handleDispatchModalClose = useCallback(() => {
+    setShowDispatchModal(false);
+    setSelectedOrder(null);
+    setSelectedItem(null);
+    setSelectedComponentForDispatch(null);
+  }, []);
 
   const hasValidPrintingComponent = useCallback((item) => {
     return item.components?.some(component =>
-      component.decorations?.printing &&
-      component.deco_sequence?.includes('printing')
+      hasDecorationForTeam(component, 'printing')
     );
   }, []);
 
@@ -135,13 +168,11 @@ const canEditOrder = useCallback((order) => {
 
         const allStoredOrders = getLocalStorageData(STORAGE_KEY);
         if (allStoredOrders && allStoredOrders.length > 0) {
-          ordersToLoad = getOrdersByStatus(TEAM, orderType, true ,allStoredOrders);
+          ordersToLoad = getOrdersByStatus(TEAM, orderType, true, allStoredOrders);
           if (orderType === "in_progress") {
             ordersToLoad = ordersToLoad.filter(order => order.order_status !== "PENDING_PI");
-         
           }
         } else {
-
           const initialized = await initializeLocalStorage(TEAM, FilterPrintingOrders, true);
 
           if (orderType === "in_progress") {
@@ -203,7 +234,7 @@ const canEditOrder = useCallback((order) => {
 
         const matchedComponents = item.components?.filter(c =>
           c.name?.toLowerCase().includes(searchLower) &&
-          c.decorations?.printing
+          hasDecorationForTeam(c, 'printing')
         ) || [];
 
         if (matchedComponents.length > 0) {
@@ -218,18 +249,47 @@ const canEditOrder = useCallback((order) => {
     return results;
   }, [currentOrders, searchTerm, hasValidPrintingComponent]);
 
+  const handleEditClick = useCallback((order, item) => {
+    if (!canEditOrder(order)) {
+      // Get specific reason for each component
+      let reasons = [];
 
- const handleEditClick = useCallback((order, item) => {
-  if (!canEditOrder(order)) {
-    alert("Cannot edit: All components must be decoration approved and have all vehicles delivered");
-    return;
-  }
-  
-  setSelectedOrder(order);
-  setSelectedItem(item);
-  setShowModal(true);
-}, );
+      for (const component of item.components || []) {
+        if (component.component_type === "glass" &&
+          hasDecorationForTeam(component, 'printing')) {
 
+          const { canWork, reason } = canTeamWork(component, 'printing');
+          if (!canWork) {
+            reasons.push(`${component.name}: ${reason}`);
+            continue;
+          }
+
+          if (!component.is_deco_approved) {
+            reasons.push(`${component.name}: Not decoration approved`);
+            continue;
+          }
+
+          if (!component.vehicle_details || component.vehicle_details.length === 0) {
+            reasons.push(`${component.name}: No vehicle details`);
+          } else {
+            const undelivered = component.vehicle_details.filter(v =>
+              v.status !== "DELIVERED" && !v.received
+            );
+            if (undelivered.length > 0) {
+              reasons.push(`${component.name}: ${undelivered.length} vehicle(s) not delivered`);
+            }
+          }
+        }
+      }
+
+      alert(`Cannot edit:\n${reasons.join('\n')}`);
+      return;
+    }
+
+    setSelectedOrder(order);
+    setSelectedItem(item);
+    setShowModal(true);
+  }, [canEditOrder]);
 
   const paginatedOrders = useMemo(() => {
     const indexOfLastOrder = currentPage * ordersPerPage;
@@ -269,6 +329,11 @@ const canEditOrder = useCallback((order) => {
       .replace(/\b\w/g, (c) => c.toUpperCase());
   }, []);
 
+  // New function to get waiting message
+  const getComponentWaitingMessage = useCallback((component) => {
+    return getWaitingMessage(component, 'printing');
+  }, []);
+
   if (loading && currentOrders.length === 0) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -305,7 +370,22 @@ const canEditOrder = useCallback((order) => {
         orderType={orderType}
         handleVehicleModalOpen={handleVehicleModalOpen}
         getPrintingStatus={getPrintingStatus}
+        getComponentWaitingMessage={getComponentWaitingMessage}
+        teamName="printing"
+        handleDispatchClick={handleDispatchClick}
+        canDispatchComponent={(component) => getPrintingStatus(component) === 'READY_TO_DISPATCH'}
       />
+
+      {showDispatchModal && selectedOrder && selectedItem && selectedComponentForDispatch && (
+        <DispatchPrinting
+          isOpen={showDispatchModal}
+          onClose={handleDispatchModalClose}
+          orderData={selectedOrder}
+          itemData={selectedItem}
+          componentData={selectedComponentForDispatch}
+          onUpdate={handleLocalOrderUpdate}
+        />
+      )}
 
       <Pagination
         currentPage={currentPage}
@@ -331,7 +411,6 @@ const canEditOrder = useCallback((order) => {
           itemData={selectedItem}
           componentId={selectedComponentId}
           onUpdate={handleLocalOrderUpdate}
-
         />
       )}
     </div>

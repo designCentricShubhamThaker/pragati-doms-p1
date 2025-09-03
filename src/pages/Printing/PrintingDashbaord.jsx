@@ -93,23 +93,48 @@ const PrintingDashbaord = ({ isEmbedded = false }) => {
     }));
   }, []);
 
-  useEffect(() => {
-    if (!socket) return;
-
-    socket.emit("joinRoom", "printing");
-
-    const handlePrintingProductionUpdated = ({ order_number, item_id, component_id, updatedComponent }) => {
-      console.log("📢 Printing production update received:", order_number, item_id, component_id, updatedComponent);
-      handleOrderUpdate(order_number, item_id, component_id, updatedComponent, updatedComponent?.status);
-    };
 
 
-    socket.on("printingProductionUpdated", handlePrintingProductionUpdated);
+useEffect(() => {
+  if (!socket) return;
 
-    return () => {
-      socket.off("printingProductionUpdated", handlePrintingProductionUpdated);
-    };
-  }, [socket, handleOrderUpdate])
+  socket.emit("joinRoom", "printing");
+
+  const handlePrintingProductionUpdated = ({ order_number, item_id, component_id, updatedComponent }) => {
+    console.log("📢 Printing production update received:", order_number, item_id, component_id, updatedComponent);
+    handleOrderUpdate(order_number, item_id, component_id, updatedComponent, updatedComponent?.status);
+  };
+
+  const handlePrintingDispatchUpdated = ({ order_number, item_id, component_id, updatedComponent, itemChanges, orderChanges }) => {
+    console.log("📦 Printing dispatch update received:", { order_number, item_id, component_id, updatedComponent, itemChanges, orderChanges });
+    handleOrderUpdate(order_number, item_id, component_id, updatedComponent, updatedComponent?.status, itemChanges, orderChanges);
+  };
+
+  // Handle notifications from other teams
+  const handleDecorationTeamNotification = ({ type, message, order_number, item_id, component_id, component_name, previous_team, current_team }) => {
+    if (current_team === 'printing' && type === 'READY_FOR_WORK') {
+      console.log(`🔔 Notification: ${message}`);
+      // Refresh orders to show newly available work
+      setGlobalState(prev => ({
+        ...prev,
+        refreshOrders: prev.refreshOrders + 1,
+      }));
+      
+      // Optional: Show toast notification
+      // toast.success(`New work available: ${component_name} from ${previous_team}`);
+    }
+  };
+
+  socket.on("printingProductionUpdated", handlePrintingProductionUpdated);
+  socket.on("printingDispatchUpdated", handlePrintingDispatchUpdated);
+  socket.on("decorationTeamNotification", handleDecorationTeamNotification);
+
+  return () => {
+    socket.off("printingProductionUpdated", handlePrintingProductionUpdated);
+    socket.off("printingDispatchUpdated", handlePrintingDispatchUpdated);
+    socket.off("decorationTeamNotification", handleDecorationTeamNotification);
+  };
+}, [socket, handleOrderUpdate]);
 
 
   const handleLogout = useCallback(() => {

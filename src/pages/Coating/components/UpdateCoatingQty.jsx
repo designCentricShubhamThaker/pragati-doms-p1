@@ -3,7 +3,7 @@ import { Dialog, DialogBackdrop, DialogPanel, DialogTitle } from '@headlessui/re
 import { X, Save } from 'lucide-react';
 import { getSocket } from '../../../context/SocketContext';
 
-const UpdatePrintingQty = ({ isOpen, onClose, orderData, itemData, onUpdate }) => {
+const UpdateCoatingQty = ({ isOpen, onClose, orderData, itemData, onUpdate }) => {
   const [assignments, setAssignments] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -13,13 +13,13 @@ const UpdatePrintingQty = ({ isOpen, onClose, orderData, itemData, onUpdate }) =
   useEffect(() => {
     if (isOpen && itemData?.components) {
       const bottleAssignments = itemData.components
-        .filter(component => component.component_type === "glass" && component.decorations?.printing)
+        .filter(component => component.component_type === "glass" && component.decorations?.coating)
         .map(bottle => ({
           ...bottle,
-          // Use printing data instead of glass data
-          printingQty: bottle.decorations.printing.qty,
-          printingCompleted: bottle.decorations.printing.completed_qty,
-          printingStatus: bottle.decorations.printing.status,
+          // Use coating data instead of glass data
+          coatingQty: bottle.decorations.coating.qty,
+          coatingCompleted: bottle.decorations.coating.completed_qty,
+          coatingStatus: bottle.decorations.coating.status,
           todayQty: "",
           notes: ''
         }));
@@ -34,68 +34,6 @@ const UpdatePrintingQty = ({ isOpen, onClose, orderData, itemData, onUpdate }) =
       setSuccessMessage('');
     }
   }, [isOpen, itemData]);
-
-  const handleSave = async () => {
-  try {
-    setLoading(true);
-    setError(null);
-
-    const updates = assignments
-      .filter(assignment => assignment.todayQty > 0)
-      .map(assignment => ({
-        component_id: assignment.component_id,
-        quantity_produced: assignment.todayQty,
-        username: 'printing_admin',
-        notes: assignment.notes || 'qty produced',
-        date: new Date().toISOString()
-      }));
-
-    if (updates.length === 0) {
-      setError('Please enter quantity for at least one bottle');
-      setLoading(false);
-      return;
-    }
-
-    // Emit updates with individual listeners (like glass code)
-    for (let update of updates) {
-      const payload = {
-        team: "printing",
-        order_number: orderData.order_number,
-        item_id: itemData?.item_id,
-        component_id: update.component_id,
-        updateData: {
-          date: update.date,
-          username: "printing_admin", 
-          quantity_produced: update.quantity_produced,
-          notes: update.notes
-        }
-      };
-
-      socket.emit("updateDecorationProduction", payload);
-
-      socket.once("printingProductionUpdatedSelf", ({ order_number, item_id, component_id, updatedComponent }) => {
-        console.log("✅ Production updated:", order_number, item_id, component_id, updatedComponent);
-        onUpdate(order_number, item_id, component_id, updatedComponent, updatedComponent?.status);
-      });
-
-      socket.once("printingProductionError", (error) => {
-        console.error("❌ Printing update failed:", error);
-        setError(error || "Printing update failed");
-      });
-    }
-
-    setSuccessMessage("Quantities updated successfully!");
-    setTimeout(() => {
-      onClose();
-    }, 1500);
-
-  } catch (err) {
-    console.error("Error updating quantities:", err);
-    setError(err.message || "Failed to update quantities");
-    setLoading(false);
-  }
-};
-
 
   const handleQuantityChange = (assignmentIndex, value) => {
     const newAssignments = [...assignments];
@@ -112,18 +50,18 @@ const UpdatePrintingQty = ({ isOpen, onClose, orderData, itemData, onUpdate }) =
     setAssignments(newAssignments);
   };
 
-  // Fixed: Calculate current progress based only on printing completed_qty
+  // Fixed: Calculate current progress based only on coating completed_qty
   const calculateProgress = (bottle) => {
-    const completed = bottle.printingCompleted || 0;
-    const total = bottle.printingQty || 0;
+    const completed = bottle.coatingCompleted || 0;
+    const total = bottle.coatingQty || 0;
     return total > 0 ? Math.min((completed / total) * 100, 100) : 0;
   };
 
   // New: Calculate progress after adding today's quantity
   const calculateNewProgress = (bottle, todayQty) => {
-    const currentCompleted = bottle.printingCompleted || 0;
+    const currentCompleted = bottle.coatingCompleted || 0;
     const newCompleted = currentCompleted + (todayQty || 0);
-    const total = bottle.printingQty || 0;
+    const total = bottle.coatingQty || 0;
     return total > 0 ? Math.min((newCompleted / total) * 100, 100) : 0;
   };
 
@@ -158,6 +96,67 @@ const UpdatePrintingQty = ({ isOpen, onClose, orderData, itemData, onUpdate }) =
     );
   };
 
+const handleSave = async () => {
+  try {
+    setLoading(true);
+    setError(null);
+
+    const updates = assignments
+      .filter(assignment => assignment.todayQty > 0)
+      .map(assignment => ({
+        component_id: assignment.component_id,
+        quantity_produced: assignment.todayQty,
+        username: 'coating_admin',
+        notes: assignment.notes || 'qty produced',
+        date: new Date().toISOString()
+      }));
+
+    if (updates.length === 0) {
+      setError('Please enter quantity for at least one bottle');
+      setLoading(false);
+      return;
+    }
+
+    // Emit updates with individual listeners (like glass code)
+    for (let update of updates) {
+      const payload = {
+        team: "coating",
+        order_number: orderData.order_number,
+        item_id: itemData?.item_id,
+        component_id: update.component_id,
+        updateData: {
+          date: update.date,
+          username: "coating_admin", 
+          quantity_produced: update.quantity_produced,
+          notes: update.notes
+        }
+      };
+
+      socket.emit("updatecoatingProduction", payload);
+
+      // Individual listeners for each update (same pattern as glass)
+      socket.once("coatingProductionUpdatedSelf", ({ order_number, item_id, component_id, updatedComponent }) => {
+        console.log("✅ Production updated:", order_number, item_id, component_id, updatedComponent);
+        onUpdate(order_number, item_id, component_id, updatedComponent, updatedComponent?.status);
+      });
+
+      socket.once("coatingProductionError", (error) => {
+        console.error("❌ coating update failed:", error);
+        setError(error || "coating update failed");
+      });
+    }
+
+    setSuccessMessage("Quantities updated successfully!");
+    setTimeout(() => {
+      onClose();
+    }, 1500);
+
+  } catch (err) {
+    console.error("Error updating quantities:", err);
+    setError(err.message || "Failed to update quantities");
+    setLoading(false);
+  }
+};
 
   return (
     <Dialog open={isOpen} onClose={onClose}>
@@ -217,9 +216,9 @@ const UpdatePrintingQty = ({ isOpen, onClose, orderData, itemData, onUpdate }) =
             <div className="max-h-[50vh] sm:max-h-96 overflow-y-auto p-3 sm:p-6">
               {assignments.length === 0 ? (
                 <div className="text-center py-8">
-                  <div className="text-gray-500 text-lg mb-2">No printing components found</div>
+                  <div className="text-gray-500 text-lg mb-2">No coating components found</div>
                   <div className="text-gray-400 text-sm">
-                    This item doesn't have any glass components with printing requirements.
+                    This item doesn't have any glass components with coating requirements.
                   </div>
                 </div>
               ) : (
@@ -253,7 +252,7 @@ const UpdatePrintingQty = ({ isOpen, onClose, orderData, itemData, onUpdate }) =
                           </div>
 
                           <div className="text-center text-orange-900 font-medium">
-                            {assignment.printingQty}
+                            {assignment.coatingQty}
                           </div>
 
                           <div className="px-2">
@@ -262,7 +261,7 @@ const UpdatePrintingQty = ({ isOpen, onClose, orderData, itemData, onUpdate }) =
                               todayQty={assignment.todayQty || 0}
                             />
                             <div className="text-xs text-gray-500 mt-1 text-center">
-                              {assignment.printingCompleted || 0} / {assignment.printingQty}
+                              {assignment.coatingCompleted || 0} / {assignment.coatingQty}
                             </div>
                           </div>
 
@@ -307,7 +306,7 @@ const UpdatePrintingQty = ({ isOpen, onClose, orderData, itemData, onUpdate }) =
                             </div>
                             <div>
                               <span className="text-gray-600">Total:</span>
-                              <div className="font-medium text-orange-900">{assignment.printingQty}</div>
+                              <div className="font-medium text-orange-900">{assignment.coatingQty}</div>
                             </div>
                           </div>
 
@@ -315,7 +314,7 @@ const UpdatePrintingQty = ({ isOpen, onClose, orderData, itemData, onUpdate }) =
                             <div className="flex justify-between items-center mb-2">
                               <span className="text-xs text-gray-600">Progress:</span>
                               <span className="text-xs text-gray-500">
-                                {assignment.printingCompleted || 0} / {assignment.printingQty}
+                                {assignment.coatingCompleted || 0} / {assignment.coatingQty}
                               </span>
                             </div>
                             <ProgressBar 
@@ -388,4 +387,4 @@ const UpdatePrintingQty = ({ isOpen, onClose, orderData, itemData, onUpdate }) =
   );
 };
 
-export default UpdatePrintingQty;
+export default UpdateCoatingQty;

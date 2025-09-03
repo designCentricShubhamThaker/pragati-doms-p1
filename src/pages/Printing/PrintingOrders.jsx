@@ -9,8 +9,11 @@ import {
   canTeamWork,
   hasDecorationForTeam,
   getWaitingMessage,
-  getDecorationStatus
+  getDecorationStatus,
+  canTeamApproveVehicles,
+  areVehiclesApproved // Add this new import
 } from '../../utils/DecorationSequence.jsx';
+
 import DispatchPrinting from './components/DispatchPrinting.jsx';
 
 const PrintingOrders = ({
@@ -67,41 +70,39 @@ const PrintingOrders = ({
     return Math.max(0, remaining);
   }, [globalState?.dataVersion]);
 
-  const canEditOrder = useCallback((order) => {
-    // Check all components in all items of the order
-    for (const item of order.items || []) {
-      for (const component of item.components || []) {
-        if (component.component_type === "glass" &&
-          hasDecorationForTeam(component, 'printing')) {
+const canEditOrder = useCallback((order) => {
+  // Check all components in all items of the order
+  for (const item of order.items || []) {
+    for (const component of item.components || []) {
+      if (component.component_type === "glass" &&
+        hasDecorationForTeam(component, 'printing')) {
 
-          // Check decoration sequence workflow
-          const { canWork } = canTeamWork(component, 'printing');
-          if (!canWork) {
-            return false;
-          }
+        // Check decoration sequence workflow
+        const { canWork } = canTeamWork(component, 'printing');
+        if (!canWork) {
+          return false;
+        }
 
-          // Check if is_deco_approved is true
-          if (!component.is_deco_approved) {
-            return false;
-          }
+        // Check if is_deco_approved is true
+        if (!component.is_deco_approved) {
+          return false;
+        }
 
-          // Check if all vehicles are delivered
-          if (component.vehicle_details && component.vehicle_details.length > 0) {
-            const allDelivered = component.vehicle_details.every(v =>
-              v.status === "DELIVERED" || v.received === true
-            );
-            if (!allDelivered) {
-              return false;
-            }
-          } else {
-            // If no vehicle details exist, consider it as not ready
+        // SIMPLIFIED: Only check vehicles if this team is responsible for vehicle approval
+        const isResponsibleForVehicles = canTeamApproveVehicles(component, 'printing');
+
+        if (isResponsibleForVehicles) {
+          // Use the simplified vehicle approval check
+          if (!areVehiclesApproved(component)) {
             return false;
           }
         }
+        // If not responsible for vehicles, skip vehicle check entirely
       }
     }
-    return true;
-  }, []);
+  }
+  return true;
+}, []);
 
   const handleDispatchClick = useCallback((order, item, component) => {
     const printingStatus = getPrintingStatus(component);
@@ -158,47 +159,47 @@ const PrintingOrders = ({
     handleClose();
   }, [onOrderUpdate, handleClose]);
 
-  useEffect(() => {
-    const loadOrders = async () => {
-      try {
-        setLoading(true);
-        setError(null);
+useEffect(() => {
+  const loadOrders = async () => {
+    try {
+      setLoading(true);
+      setError(null);
 
-        let ordersToLoad = [];
+      let ordersToLoad = [];
 
-        const allStoredOrders = getLocalStorageData(STORAGE_KEY);
-        if (allStoredOrders && allStoredOrders.length > 0) {
-          ordersToLoad = getOrdersByStatus(TEAM, orderType, true, allStoredOrders);
-          if (orderType === "in_progress") {
-            ordersToLoad = ordersToLoad.filter(order => order.order_status !== "PENDING_PI");
-          }
-        } else {
-          const initialized = await initializeLocalStorage(TEAM, FilterPrintingOrders, true);
-
-          if (orderType === "in_progress") {
-            ordersToLoad = (initialized.inProgressOrders || []).filter(
-              order => order.order_status !== "PENDING_PI"
-            );
-          } else if (orderType === "ready_to_dispatch") {
-            ordersToLoad = initialized.readyToDispatchOrders || [];
-          } else if (orderType === "dispatched") {
-            ordersToLoad = initialized.dispatchedOrders || [];
-          }
+      const allStoredOrders = getLocalStorageData(STORAGE_KEY);
+      if (allStoredOrders && allStoredOrders.length > 0) {
+        // Use team-specific status filtering
+        ordersToLoad = getOrdersByStatus(TEAM, orderType, false, allStoredOrders);
+        if (orderType === "in_progress") {
+          ordersToLoad = ordersToLoad.filter(order => order.order_status !== "PENDING_PI");
         }
+      } else {
+        const initialized = await initializeLocalStorage(TEAM, FilterPrintingOrders, false);
 
-        if (JSON.stringify(ordersToLoad) !== JSON.stringify(currentOrders)) {
-          onOrdersUpdate(ordersToLoad);
+        if (orderType === "in_progress") {
+          ordersToLoad = (initialized.inProgressOrders || []).filter(
+            order => order.order_status !== "PENDING_PI"
+          );
+        } else if (orderType === "ready_to_dispatch") {
+          ordersToLoad = initialized.readyToDispatchOrders || [];
+        } else if (orderType === "dispatched") {
+          ordersToLoad = initialized.dispatchedOrders || [];
         }
-      } catch (err) {
-        setError(err.message);
-      } finally {
-        setLoading(false);
       }
-    };
 
-    loadOrders();
-  }, [orderType, onOrdersUpdate, currentOrders, globalState?.refreshOrders]);
+      if (JSON.stringify(ordersToLoad) !== JSON.stringify(currentOrders)) {
+        onOrdersUpdate(ordersToLoad);
+      }
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
+  loadOrders();
+}, [orderType, onOrdersUpdate, currentOrders, globalState?.refreshOrders]);
   useEffect(() => {
     refreshOrders(orderType);
   }, [refreshOrders, orderType]);
@@ -249,47 +250,54 @@ const PrintingOrders = ({
     return results;
   }, [currentOrders, searchTerm, hasValidPrintingComponent]);
 
+
   const handleEditClick = useCallback((order, item) => {
-    if (!canEditOrder(order)) {
-      // Get specific reason for each component
-      let reasons = [];
+  if (!canEditOrder(order)) {
+    let reasons = [];
 
-      for (const component of item.components || []) {
-        if (component.component_type === "glass" &&
-          hasDecorationForTeam(component, 'printing')) {
+    for (const component of item.components || []) {
+      if (component.component_type === "glass" &&
+        hasDecorationForTeam(component, 'printing')) {
 
-          const { canWork, reason } = canTeamWork(component, 'printing');
-          if (!canWork) {
-            reasons.push(`${component.name}: ${reason}`);
-            continue;
-          }
+        const { canWork, reason } = canTeamWork(component, 'printing');
+        if (!canWork) {
+          reasons.push(`${component.name}: ${reason}`);
+          continue;
+        }
 
-          if (!component.is_deco_approved) {
-            reasons.push(`${component.name}: Not decoration approved`);
-            continue;
-          }
+        if (!component.is_deco_approved) {
+          reasons.push(`${component.name}: Not decoration approved`);
+          continue;
+        }
 
-          if (!component.vehicle_details || component.vehicle_details.length === 0) {
-            reasons.push(`${component.name}: No vehicle details`);
-          } else {
-            const undelivered = component.vehicle_details.filter(v =>
-              v.status !== "DELIVERED" && !v.received
-            );
-            if (undelivered.length > 0) {
-              reasons.push(`${component.name}: ${undelivered.length} vehicle(s) not delivered`);
+        // SIMPLIFIED: Only check vehicles if this team is responsible
+        const isResponsibleForVehicles = canTeamApproveVehicles(component, 'printing');
+
+        if (isResponsibleForVehicles) {
+          if (!areVehiclesApproved(component)) {
+            const vehicleCount = component.vehicle_details?.length || 0;
+            if (vehicleCount === 0) {
+              reasons.push(`${component.name}: No vehicles assigned (printing team responsible)`);
+            } else {
+              const undelivered = component.vehicle_details.filter(v =>
+                v.status !== "DELIVERED" && !v.received
+              );
+              reasons.push(`${component.name}: ${undelivered.length}/${vehicleCount} vehicle(s) not approved`);
             }
           }
         }
+        // If not responsible for vehicles, don't add vehicle-related errors
       }
-
-      alert(`Cannot edit:\n${reasons.join('\n')}`);
-      return;
     }
 
-    setSelectedOrder(order);
-    setSelectedItem(item);
-    setShowModal(true);
-  }, [canEditOrder]);
+    alert(`Cannot edit:\n${reasons.join('\n')}`);
+    return;
+  }
+
+  setSelectedOrder(order);
+  setSelectedItem(item);
+  setShowModal(true);
+}, [canEditOrder, TEAM]);
 
   const paginatedOrders = useMemo(() => {
     const indexOfLastOrder = currentPage * ordersPerPage;

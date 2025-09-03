@@ -7,9 +7,10 @@ import { useCurrentDateTime } from '../../hooks/useCurrentDateTime.jsx';
 
 import { getSocket } from '../../context/SocketContext.jsx';
 import { getLocalStorageData, getOrdersByStatus, getStorageKey, updateOrderInLocalStorage } from '../../utils/orderStorage.jsx';
-import PrintingOrders from './PrintingOrders.jsx';
+import FrostingOrders from './FrostingOrders.jsx';
 
-const PrintingDashbaord = ({ isEmbedded = false }) => {
+
+const FrostingDashboard = ({ isEmbedded = false  }) => {
   const [activeMenuItem, setActiveMenuItem] = useState('liveOrders');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { currentDateTime, formatTime, formatTimeMobile } = useCurrentDateTime();
@@ -43,7 +44,7 @@ const PrintingDashbaord = ({ isEmbedded = false }) => {
         orderChanges,
       });
 
-      const team = "printing";
+      const team = "frosting";
       const STORAGE_KEY = getStorageKey(team);
       let allOrders = getLocalStorageData(STORAGE_KEY) || [];
 
@@ -94,73 +95,27 @@ const PrintingDashbaord = ({ isEmbedded = false }) => {
   }, []);
 
 
-
 useEffect(() => {
   if (!socket) return;
 
-  socket.emit("joinRoom", "printing");
+  socket.emit("joinRoom", "frosting");
 
-  const handlePrintingProductionUpdated = ({ order_number, item_id, component_id, updatedComponent }) => {
-    console.log("📢 Printing production update received:", order_number, item_id, component_id, updatedComponent);
+  // ✅ FIXED - renamed handler to be more generic
+  const handleFrostingProductionUpdated = ({ order_number, item_id, component_id, updatedComponent }) => {
+    console.log("📢 Frosting production update received:", order_number, item_id, component_id, updatedComponent);
     handleOrderUpdate(order_number, item_id, component_id, updatedComponent, updatedComponent?.status);
   };
 
-  const handlePrintingDispatchUpdated = ({ order_number, item_id, component_id, updatedComponent, itemChanges, orderChanges }) => {
-    console.log("📦 Printing dispatch update received:", { order_number, item_id, component_id, updatedComponent, itemChanges, orderChanges });
+  // ✅ FIXED - renamed handler to be more generic
+  const handleFrostingDispatchUpdated = ({ order_number, item_id, component_id, updatedComponent, itemChanges, orderChanges }) => {
+    console.log("📦 Frosting dispatch update received:", { order_number, item_id, component_id, updatedComponent, itemChanges, orderChanges });
     handleOrderUpdate(order_number, item_id, component_id, updatedComponent, updatedComponent?.status, itemChanges, orderChanges);
   };
 
-  // NEW: Handle vehicle details from glass team
-  const handleVehicleDetailsReceived = ({ order_number, item_id, component_id, component_name, vehicle_details, deco_sequence, from_team }) => {
-    console.log("🚛 Vehicle details received from glass:", { order_number, item_id, component_id, vehicle_details });
-    
-    // Update component with vehicle details
-    const updatedComponent = {
-      vehicle_details: vehicle_details,
-      vehicle_received_from: from_team,
-      vehicle_received_at: new Date().toISOString()
-    };
-    
-    handleOrderUpdate(order_number, item_id, component_id, updatedComponent);
-    
-    // Show notification if this is the first team in sequence
-    const sequence = deco_sequence.split('_');
-    if (sequence[0] === 'printing') {
-      console.log("🔔 Vehicle approval required for printing team");
-      // Optional: Show toast notification
-      // toast.info(`Vehicle details received for ${component_name}. Approval required.`);
-    }
-  };
-
-  // NEW: Handle vehicle approval notifications
-  const handleVehicleApprovalRequired = ({ order_number, item_id, component_id, component_name, responsible_team }) => {
-    if (responsible_team === 'printing') {
-      console.log("🔔 Vehicle approval required:", component_name);
-      // Optional: Show toast notification
-      // toast.warning(`Vehicle approval required for ${component_name}`);
-    }
-  };
-
-  // NEW: Handle vehicle approval updates
-  const handleVehicleApprovalUpdated = ({ order_number, item_id, component_id, updatedComponent, approved_by }) => {
-    console.log("✅ Vehicle approval updated:", { order_number, item_id, component_id, approved_by });
-    handleOrderUpdate(order_number, item_id, component_id, updatedComponent);
-    
-    // Show success notification
-    // toast.success(`Vehicles approved by ${approved_by}`);
-  };
-
   // Handle notifications from other teams
-  const handleDecorationTeamNotification = ({ type, message, order_number, item_id, component_id, component_name, previous_team, current_team, approved_by }) => {
-    if (current_team === 'printing') {
+  const handleDecorationTeamNotification = ({ type, message, order_number, item_id, component_id, component_name, previous_team, current_team }) => {
+    if (current_team === 'frosting' && type === 'READY_FOR_WORK') {
       console.log(`🔔 Notification: ${message}`);
-      
-      if (type === 'VEHICLES_APPROVED') {
-        console.log(`🚛 Vehicles approved by ${approved_by}, ready for printing work`);
-      } else if (type === 'READY_FOR_WORK') {
-        console.log(`📦 New work available: ${component_name} from ${previous_team}`);
-      }
-      
       // Refresh orders to show newly available work
       setGlobalState(prev => ({
         ...prev,
@@ -168,27 +123,23 @@ useEffect(() => {
       }));
       
       // Optional: Show toast notification
-      // toast.success(message);
+      // toast.success(`New work available: ${component_name} from ${previous_team}`);
     }
   };
 
-  // Register socket listeners
-  socket.on("printingProductionUpdated", handlePrintingProductionUpdated);
-  socket.on("printingDispatchUpdated", handlePrintingDispatchUpdated);
-  socket.on("vehicleDetailsReceived", handleVehicleDetailsReceived);
-  socket.on("vehicleApprovalRequired", handleVehicleApprovalRequired);
-  socket.on("vehicleApprovalUpdated", handleVehicleApprovalUpdated);
+  // ✅ FIXED - correct event names for frosting team
+  socket.on("frostingProductionUpdated", handleFrostingProductionUpdated);
+  socket.on("frostingDispatchUpdated", handleFrostingDispatchUpdated);
   socket.on("decorationTeamNotification", handleDecorationTeamNotification);
 
   return () => {
-    socket.off("printingProductionUpdated", handlePrintingProductionUpdated);
-    socket.off("printingDispatchUpdated", handlePrintingDispatchUpdated);
-    socket.off("vehicleDetailsReceived", handleVehicleDetailsReceived);
-    socket.off("vehicleApprovalRequired", handleVehicleApprovalRequired);
-    socket.off("vehicleApprovalUpdated", handleVehicleApprovalUpdated);
+    // ✅ FIXED - correct cleanup
+    socket.off("frostingProductionUpdated", handleFrostingProductionUpdated);
+    socket.off("frostingDispatchUpdated", handleFrostingDispatchUpdated);
     socket.off("decorationTeamNotification", handleDecorationTeamNotification);
   };
 }, [socket, handleOrderUpdate]);
+
 
   const handleLogout = useCallback(() => {
     console.log('Logout clicked');
@@ -213,11 +164,11 @@ useEffect(() => {
     { id: 'ReadyToDispatch', label: 'Ready to Dispatch' },
     { id: 'dispatched', label: 'Dispatched' },
 
-
   ];
 
+
   const refreshOrders = useCallback((orderType) => {
-    const TEAM = "printing";
+    const TEAM = "frosting";
     const ordersToLoad = getOrdersByStatus(TEAM, orderType);
 
     if (orderType === "in_progress") {
@@ -240,11 +191,11 @@ useEffect(() => {
 
     switch (activeMenuItem) {
       case 'liveOrders':
-        return <PrintingOrders orderType='in_progress' {...commonProps} />;
+        return <FrostingOrders orderType='in_progress' {...commonProps} />;
       case 'ReadyToDispatch':
-        return <PrintingOrders orderType='ready_to_dispatch' {...commonProps} />;
+        return <FrostingOrders orderType='ready_to_dispatch' {...commonProps} />;
       case 'dispatched':
-        return <PrintingOrders orderType='dispatched' {...commonProps} />;
+        return <FrostingOrders orderType='dispatched' {...commonProps} />;
 
       default:
         return (
@@ -263,8 +214,8 @@ useEffect(() => {
   const headerConfig = {
     showGradient: !isEmbedded,
     showTime: !isEmbedded,
-    title: isEmbedded ? "Printing Department" : "Welcome to Printing Department !",
-    mobileTitle: "Printing"
+    title: isEmbedded ? "frosting Department" : "Welcome to frosting Department !",
+    mobileTitle: "frosting"
   };
 
   return (
@@ -347,4 +298,4 @@ useEffect(() => {
   );
 };
 
-export default PrintingDashbaord;
+export default FrostingDashboard;

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { getSocket } from '../../../context/SocketContext.jsx';
 
-const DispatchPrinting = ({ isOpen, onClose, orderData, itemData, componentData, onUpdate }) => {
+const DispatchFrosting = ({ isOpen, onClose, orderData, itemData, componentData, onUpdate }) => {
   const [loading, setLoading] = useState(false);
   const socket = getSocket();
 
@@ -11,12 +11,12 @@ const DispatchPrinting = ({ isOpen, onClose, orderData, itemData, componentData,
     setLoading(true);
     try {
       const payload = {
-        team: 'printing',
+        team: 'frosting',
         order_number: orderData.order_number,
         item_id: itemData.item_id,
         component_id: componentData.component_id,
         updateData: {
-          dispatched_by: 'printing_admin',
+          dispatched_by: 'frosting_admin',
           dispatch_date: new Date().toISOString()
         }
       };
@@ -65,4 +65,4 @@ const DispatchPrinting = ({ isOpen, onClose, orderData, itemData, componentData,
   );
 };
 
-export default DispatchPrinting;
+export default DispatchFrosting;

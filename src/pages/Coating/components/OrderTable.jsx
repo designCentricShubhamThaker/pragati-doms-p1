@@ -8,6 +8,7 @@ import {
   canTeamApproveVehicles,
   getVehicleApprovalStatus
 } from '../../../utils/DecorationSequence.jsx';
+
 const OrderTable = ({
   currentOrders,
   orderType,
@@ -17,15 +18,15 @@ const OrderTable = ({
   handleSearchCustomer,
   handleSearchManager,
   expandedRows,
-  setExpandedRows,
+  setExpandedRows, 
   getStatusStyle,
   formatStatusLabel,
   handleVehicleModalOpen,
   canEditOrder,
   handleDispatchClick,
   canDispatchComponent,
-  teamName = 'printing', // Default to printing
-  getComponentWaitingMessage // Add this prop
+  teamName = 'coating',
+  getComponentWaitingMessage 
 }) => {
 
   const toggleRowExpansion = (rowId) => {
@@ -40,25 +41,15 @@ const OrderTable = ({
     });
   };
 
-  function sumTrackingKey(tracking, key) {
-    return tracking?.reduce((total, entry) => {
-      return total + (Number(entry[key]) || 0);
-    }, 0) || 0;
-  }
-
-  const canDispatchComponentLocal = (component, team) => {
-    const teamStatus = component?.decorations?.[team]?.status;
-    return teamStatus === 'READY_TO_DISPATCH';
-  };
   const renderVehicleApproval = (glass, order, item) => {
     const vehicleStatus = getVehicleApprovalStatus(glass, teamName);
     const canApprove = canTeamApproveVehicles(glass, teamName);
 
     if (!canApprove) {
-      // Show that this team is not responsible for vehicle approval
+      // Show status but indicate not responsible
       return (
         <div className="flex flex-col items-center">
-          <span className="text-xs text-gray-500 mb-1">Other Team</span>
+          <span className="text-xs text-gray-500 mb-1">Not Required</span>
           <div className="text-gray-400">
             <FcCancel size={16} />
           </div>
@@ -79,7 +70,7 @@ const OrderTable = ({
           <button
             onClick={handleClick}
             className="p-1.5 rounded transition-colors"
-            title="All vehicles approved - Click to view details"
+            title="All vehicles delivered - Click to view details"
           >
             <FcApproval size={20} />
           </button>
@@ -89,7 +80,7 @@ const OrderTable = ({
           <button
             onClick={handleClick}
             className="p-1.5 rounded transition-colors"
-            title="Vehicles need approval - Click to approve"
+            title="Pending vehicle delivery - Click to manage"
           >
             <FcCancel size={20} />
           </button>
@@ -99,7 +90,7 @@ const OrderTable = ({
           <button
             onClick={handleClick}
             className="p-1.5 rounded transition-colors"
-            title="No vehicles received yet - Click to check"
+            title="No vehicles assigned - Click to add"
           >
             <div className="text-orange-500">
               <FcCancel size={20} />
@@ -113,6 +104,17 @@ const OrderTable = ({
           </div>
         );
     }
+  };
+
+  function sumTrackingKey(tracking, key) {
+    return tracking?.reduce((total, entry) => {
+      return total + (Number(entry[key]) || 0);
+    }, 0) || 0;
+  }
+
+  const canDispatchComponentLocal = (component, team) => {
+    const teamStatus = component?.decorations?.[team]?.status;
+    return teamStatus === 'READY_TO_DISPATCH';
   };
 
   if (currentOrders.length === 0) {
@@ -160,10 +162,10 @@ const OrderTable = ({
               <div className='text-left flex justify-center '>Dispatch</div>
             )}
             {orderType === "in_progress" && (
-              <div className='text-left flex justify-center col-span-2'>Team Chekk</div>
+              <div className='text-left flex justify-center col-span-2'>Team Check</div>
             )}
 
-            <div className='text-left flex justify-center ' >Edit</div>
+            <div className='text-left flex justify-center '>Edit</div>
           </div>
         </div>
 
@@ -321,6 +323,8 @@ const OrderTable = ({
                       <div className='text-left flex justify-center col-span-2'>
                         {renderVehicleApproval(glass, order, item)}
                       </div>
+
+
 
                       {
                         orderType === 'ready_to_dispatch' && isFirstRowOfItem && (

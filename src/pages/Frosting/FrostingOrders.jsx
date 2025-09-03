@@ -12,10 +12,10 @@ import {
   canTeamApproveVehicles
 } from '../../utils/DecorationSequence.jsx';
 
-import UpdateCoatingQty from './components/UpdateCoatingQty.jsx';
-import DispatchCoating from './components/DispatchCoating.jsx';
+import UpdateFrostingQty from './components/UpdateFrostingQty.jsx';
+import DispatchFrosting from './components/DispatchFrosting.jsx';
 
-const CoatingOrders = ({
+const FrostingOrders = ({
   orderType = 'in_progress',
   globalState,
   onOrderUpdate,
@@ -36,41 +36,39 @@ const CoatingOrders = ({
   const [selectedComponentForDispatch, setSelectedComponentForDispatch] = useState(null);
 
   const ordersPerPage = 5;
-  const TEAM = 'coating';
+  const TEAM = 'frosting';
   const STORAGE_KEY = getStorageKey(TEAM);
 
   const { orders } = globalState;
   const currentOrders = orders || [];
-  console.log('Current orders from globalState:', currentOrders);
 
-  // Fixed: Renamed and corrected the filter function for coating orders
-  const FilterCoatingOrders = useCallback((items) => {
-    console.log('Filtering items for coating:', items);
+  const FilterFrostingOrders = useCallback((items) => {
+
     return items.filter(item => {
-      const hasCoatingComponent = Array.isArray(item.components) &&
+      const hasFrostingComponent = Array.isArray(item.components) &&
         item.components.some(component => {
-          const hasCoating = component.component_type === "glass" &&
-            hasDecorationForTeam(component, 'coating');
-          console.log(`Component ${component.name}: hasCoating=${hasCoating}`, component);
-          return hasCoating;
+          const hasFrosting = component.component_type === "glass" &&
+            hasDecorationForTeam(component, 'frosting');
+;
+          return hasFrosting;
         });
-      console.log(`Item ${item.item_name}: hasCoatingComponent=${hasCoatingComponent}`);
-      return hasCoatingComponent;
+
+      return hasFrostingComponent;
     });
   }, []);
 
-  const getCoatingStatus = (component) => {
-    return getDecorationStatus(component, 'coating');
+  const getFrostingStatus = (component) => {
+    return getDecorationStatus(component, 'frosting');
   };
 
   const getRemainingQty = useCallback((component) => {
-    const coating = component?.decorations?.coating;
-    if (!coating || !coating.qty) return 'N/A';
+    const frosting = component?.decorations?.frosting;
+    if (!frosting || !frosting.qty) return 'N/A';
 
-    if (coating.status === 'READY_TO_DISPATCH' || coating.status === 'DISPATCHED') return 0;
+    if (frosting.status === 'READY_TO_DISPATCH' || frosting.status === 'DISPATCHED') return 0;
 
-    const totalQuantity = coating.qty || 0;
-    const completedQty = coating.completed_qty || 0;
+    const totalQuantity = frosting.qty || 0;
+    const completedQty = frosting.completed_qty || 0;
 
     const remaining = totalQuantity - completedQty;
     return Math.max(0, remaining);
@@ -81,10 +79,10 @@ const CoatingOrders = ({
     for (const item of order.items || []) {
       for (const component of item.components || []) {
         if (component.component_type === "glass" &&
-          hasDecorationForTeam(component, 'coating')) {
+          hasDecorationForTeam(component, 'frosting')) {
 
           // Check decoration sequence workflow
-          const { canWork } = canTeamWork(component, 'coating');
+          const { canWork } = canTeamWork(component, 'frosting');
           if (!canWork) {
             return false;
           }
@@ -95,7 +93,7 @@ const CoatingOrders = ({
           }
 
           // NEW: Only check vehicles if this team is responsible for vehicle approval
-          const isResponsibleForVehicles = canTeamApproveVehicles(component, 'coating');
+          const isResponsibleForVehicles = canTeamApproveVehicles(component, 'frosting');
           
           if (isResponsibleForVehicles) {
             // Check if all vehicles are delivered
@@ -118,8 +116,8 @@ const CoatingOrders = ({
   }, []);
 
   const handleDispatchClick = useCallback((order, item, component) => {
-    const coatingStatus = getCoatingStatus(component);
-    if (coatingStatus !== 'READY_TO_DISPATCH') {
+    const FrostingStatus = getFrostingStatus(component);
+    if (FrostingStatus !== 'READY_TO_DISPATCH') {
       alert('Component must be ready to dispatch');
       return;
     }
@@ -128,7 +126,7 @@ const CoatingOrders = ({
     setSelectedItem(item);
     setSelectedComponentForDispatch(component);
     setShowDispatchModal(true);
-  }, [getCoatingStatus]);
+  }, [getFrostingStatus]);
 
   const handleDispatchModalClose = useCallback(() => {
     setShowDispatchModal(false);
@@ -137,10 +135,10 @@ const CoatingOrders = ({
     setSelectedComponentForDispatch(null);
   }, []);
 
-  // Fixed: Renamed to match coating functionality
-  const hasValidCoatingComponent = useCallback((item) => {
+  // Fixed: Renamed to match frosting functionality
+  const hasValidFrostingComponent = useCallback((item) => {
     return item.components?.some(component =>
-      hasDecorationForTeam(component, 'coating')
+      hasDecorationForTeam(component, 'frosting')
     );
   }, []);
 
@@ -182,20 +180,19 @@ const CoatingOrders = ({
         let ordersToLoad = [];
 
         const allStoredOrders = getLocalStorageData(STORAGE_KEY);
-        console.log('All stored orders from localStorage:', allStoredOrders);
+;
         
         if (allStoredOrders && allStoredOrders.length > 0) {
-          // Fixed: Pass correct forCoating parameter (true for coating team)
+          // Fixed: Pass correct forFrosting parameter (true for frosting team)
           ordersToLoad = getOrdersByStatus(TEAM, orderType, false, allStoredOrders);
-          console.log('Orders loaded by status:', ordersToLoad);
+      
           
           if (orderType === "in_progress") {
             ordersToLoad = ordersToLoad.filter(order => order.order_status !== "PENDING_PI");
           }
         } else {
-          console.log('No stored orders, initializing...');
-          // Fixed: Use the corrected filter function
-          const initialized = await initializeLocalStorage(TEAM, FilterCoatingOrders, false);
+
+          const initialized = await initializeLocalStorage(TEAM, FilterFrostingOrders, false);
 
           if (orderType === "in_progress") {
             ordersToLoad = (initialized.inProgressOrders || []).filter(
@@ -208,13 +205,12 @@ const CoatingOrders = ({
           }
         }
 
-        console.log('Final orders to load:', ordersToLoad);
 
         if (JSON.stringify(ordersToLoad) !== JSON.stringify(currentOrders)) {
           onOrdersUpdate(ordersToLoad);
         }
       } catch (err) {
-        console.error('Error loading orders:', err);
+
         setError(err.message);
       } finally {
         setLoading(false);
@@ -222,30 +218,29 @@ const CoatingOrders = ({
     };
 
     loadOrders();
-  }, [orderType, onOrdersUpdate, currentOrders, globalState?.refreshOrders, FilterCoatingOrders, STORAGE_KEY, TEAM]);
+  }, [orderType, onOrdersUpdate, currentOrders, globalState?.refreshOrders, FilterFrostingOrders, STORAGE_KEY, TEAM]);
 
   useEffect(() => {
     refreshOrders(orderType);
   }, [refreshOrders, orderType]);
 
   const filteredOrders = useMemo(() => {
-    console.log('Filtering orders for display:', currentOrders);
     
     if (!searchTerm.trim()) {
       const filtered = (Array.isArray(currentOrders) ? currentOrders : []).filter(order => {
-        const hasValid = order.items?.some(item => hasValidCoatingComponent(item));
-        console.log(`Order ${order.order_number}: hasValidCoatingComponent=${hasValid}`);
+        const hasValid = order.items?.some(item => hasValidFrostingComponent(item));
+    
         return hasValid;
       });
-      console.log('Filtered orders (no search):', filtered);
+
       return filtered;
     }
     
     const searchLower = searchTerm.toLowerCase();
     let results = [];
     currentOrders?.forEach(order => {
-      const hasValidCoating = order.items?.some(item => hasValidCoatingComponent(item));
-      if (!hasValidCoating) return;
+      const hasValidFrosting = order.items?.some(item => hasValidFrostingComponent(item));
+      if (!hasValidFrosting) return;
 
       if (
         order.order_number?.toLowerCase().includes(searchLower) ||
@@ -257,7 +252,7 @@ const CoatingOrders = ({
       }
 
       order.items?.forEach(item => {
-        if (!hasValidCoatingComponent(item)) return;
+        if (!hasValidFrostingComponent(item)) return;
 
         if (item.item_name?.toLowerCase().includes(searchLower)) {
           results.push({ ...order, items: [item] });
@@ -266,7 +261,7 @@ const CoatingOrders = ({
 
         const matchedComponents = item.components?.filter(c =>
           c.name?.toLowerCase().includes(searchLower) &&
-          hasDecorationForTeam(c, 'coating')
+          hasDecorationForTeam(c, 'frosting')
         ) || [];
 
         if (matchedComponents.length > 0) {
@@ -278,9 +273,9 @@ const CoatingOrders = ({
       });
     });
 
-    console.log('Filtered orders (with search):', results);
+
     return results;
-  }, [currentOrders, searchTerm, hasValidCoatingComponent]);
+  }, [currentOrders, searchTerm, hasValidFrostingComponent]);
 
 const handleEditClick = useCallback((order, item) => {
     if (!canEditOrder(order)) {
@@ -288,9 +283,9 @@ const handleEditClick = useCallback((order, item) => {
 
       for (const component of item.components || []) {
         if (component.component_type === "glass" &&
-          hasDecorationForTeam(component, 'coating')) {
+          hasDecorationForTeam(component, 'frosting')) {
 
-          const { canWork, reason } = canTeamWork(component, 'coating');
+          const { canWork, reason } = canTeamWork(component, 'frosting');
           if (!canWork) {
             reasons.push(`${component.name}: ${reason}`);
             continue;
@@ -302,7 +297,7 @@ const handleEditClick = useCallback((order, item) => {
           }
 
           // NEW: Only check vehicles if this team is responsible
-          const isResponsibleForVehicles = canTeamApproveVehicles(component, 'coating');
+          const isResponsibleForVehicles = canTeamApproveVehicles(component, 'frosting');
           
           if (isResponsibleForVehicles) {
             if (!component.vehicle_details || component.vehicle_details.length === 0) {
@@ -338,10 +333,10 @@ const handleEditClick = useCallback((order, item) => {
   const totalPages = Math.ceil(filteredOrders.length / ordersPerPage);
 
   const getStatusStyle = useCallback((component) => {
-    const coatingStatus = getCoatingStatus(component);
-    if (!coatingStatus) return 'text-gray-500';
+    const FrostingStatus = getFrostingStatus(component);
+    if (!FrostingStatus) return 'text-gray-500';
 
-    const normalizedStatus = coatingStatus.toString().toUpperCase();
+    const normalizedStatus = FrostingStatus.toString().toUpperCase();
     switch (normalizedStatus) {
       case 'COMPLETED':
       case 'READY_TO_DISPATCH':
@@ -357,10 +352,10 @@ const handleEditClick = useCallback((order, item) => {
   }, []);
 
   const formatStatusLabel = useCallback((component) => {
-    const coatingStatus = getCoatingStatus(component);
-    if (!coatingStatus) return 'N/A';
+    const FrostingStatus = getFrostingStatus(component);
+    if (!FrostingStatus) return 'N/A';
 
-    return coatingStatus
+    return FrostingStatus
       .toString()
       .replace(/_/g, ' ')
       .toLowerCase()
@@ -368,7 +363,7 @@ const handleEditClick = useCallback((order, item) => {
   }, []);
 
   const getComponentWaitingMessage = useCallback((component) => {
-    return getWaitingMessage(component, 'coating');
+    return getWaitingMessage(component, 'frosting');
   }, []);
 
   if (loading && currentOrders.length === 0) {
@@ -387,8 +382,7 @@ const handleEditClick = useCallback((order, item) => {
     );
   }
 
-  console.log('Final filtered orders for rendering:', filteredOrders);
-  console.log('Paginated orders for rendering:', paginatedOrders);
+ 
 
   return (
     <div className="p-5 max-w-full overflow-hidden">
@@ -409,15 +403,15 @@ const handleEditClick = useCallback((order, item) => {
         setSelectedItem={setSelectedItem}
         orderType={orderType}
         handleVehicleModalOpen={handleVehicleModalOpen}
-        getCoatingStatus={getCoatingStatus}
+        getFrostingStatus={getFrostingStatus}
         getComponentWaitingMessage={getComponentWaitingMessage}
-        teamName="coating"
+        teamName="frosting"
         handleDispatchClick={handleDispatchClick}
-        canDispatchComponent={(component) => getCoatingStatus(component) === 'READY_TO_DISPATCH'}
+        canDispatchComponent={(component) => getFrostingStatus(component) === 'READY_TO_DISPATCH'}
       />
 
       {showDispatchModal && selectedOrder && selectedItem && selectedComponentForDispatch && (
-        <DispatchCoating
+        <DispatchFrosting
           isOpen={showDispatchModal}
           onClose={handleDispatchModalClose}
           orderData={selectedOrder}
@@ -434,7 +428,7 @@ const handleEditClick = useCallback((order, item) => {
       />
 
       {showModal && selectedOrder && selectedItem && (
-        <UpdateCoatingQty
+        <UpdateFrostingQty
           isOpen={showModal}
           onClose={handleClose}
           orderData={selectedOrder}
@@ -457,4 +451,4 @@ const handleEditClick = useCallback((order, item) => {
   );
 };
 
-export default CoatingOrders;
+export default FrostingOrders;

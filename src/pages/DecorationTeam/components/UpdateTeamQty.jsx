@@ -3,7 +3,7 @@ import { Dialog, DialogBackdrop, DialogPanel, DialogTitle } from '@headlessui/re
 import { X, Save } from 'lucide-react';
 import { getSocket } from '../../../context/SocketContext';
 
-const UpdateFrostingQty = ({ isOpen, onClose, orderData, itemData, onUpdate }) => {
+const UpdateTeamQty = ({ isOpen, onClose, orderData, itemData, onUpdate, teamName, teamConfig }) => {
   const [assignments, setAssignments] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -13,13 +13,16 @@ const UpdateFrostingQty = ({ isOpen, onClose, orderData, itemData, onUpdate }) =
   useEffect(() => {
     if (isOpen && itemData?.components) {
       const bottleAssignments = itemData.components
-        .filter(component => component.component_type === "glass" && component.decorations?.frosting)
+        .filter(component => 
+          component.component_type === "glass" && 
+          component.decorations?.[teamName]
+        )
         .map(bottle => ({
           ...bottle,
-          // Use frosting data instead of glass data
-          frostingQty: bottle.decorations.frosting.qty,
-          frostingCompleted: bottle.decorations.frosting.completed_qty,
-          frostingStatus: bottle.decorations.frosting.status,
+          // Use team-specific decoration data
+          teamQty: bottle.decorations[teamName].qty,
+          teamCompleted: bottle.decorations[teamName].completed_qty,
+          teamStatus: bottle.decorations[teamName].status,
           todayQty: "",
           notes: ''
         }));
@@ -28,12 +31,73 @@ const UpdateFrostingQty = ({ isOpen, onClose, orderData, itemData, onUpdate }) =
       setError(null);
       setSuccessMessage('');
     } else if (isOpen) {
-      // Handle case where no components exist
       setAssignments([]);
       setError(null);
       setSuccessMessage('');
     }
-  }, [isOpen, itemData]);
+  }, [isOpen, itemData, teamName]);
+
+  const handleSave = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      const updates = assignments
+        .filter(assignment => assignment.todayQty > 0)
+        .map(assignment => ({
+          component_id: assignment.component_id,
+          quantity_produced: assignment.todayQty,
+          username: `${teamName}_admin`,
+          notes: assignment.notes || 'qty produced',
+          date: new Date().toISOString()
+        }));
+
+      if (updates.length === 0) {
+        setError('Please enter quantity for at least one bottle');
+        setLoading(false);
+        return;
+      }
+
+      // Emit updates using generic decoration production endpoint
+      for (let update of updates) {
+        const payload = {
+          team: teamName,
+          order_number: orderData.order_number,
+          item_id: itemData?.item_id,
+          component_id: update.component_id,
+          updateData: {
+            date: update.date,
+            username: `${teamName}_admin`, 
+            quantity_produced: update.quantity_produced,
+            notes: update.notes
+          }
+        };
+
+        socket.emit("updateDecorationProduction", payload);
+
+        // Listen for team-specific response
+        socket.once(`${teamName}ProductionUpdatedSelf`, ({ order_number, item_id, component_id, updatedComponent }) => {
+          console.log(`✅ ${teamName} production updated:`, order_number, item_id, component_id, updatedComponent);
+          onUpdate(order_number, item_id, component_id, updatedComponent, updatedComponent?.decorations?.[teamName]?.status);
+        });
+
+        socket.once(`${teamName}ProductionError`, (error) => {
+          console.error(`❌ ${teamName} update failed:`, error);
+          setError(error || `${teamName} update failed`);
+        });
+      }
+
+      setSuccessMessage("Quantities updated successfully!");
+      setTimeout(() => {
+        onClose();
+      }, 1500);
+
+    } catch (err) {
+      console.error("Error updating quantities:", err);
+      setError(err.message || "Failed to update quantities");
+      setLoading(false);
+    }
+  };
 
   const handleQuantityChange = (assignmentIndex, value) => {
     const newAssignments = [...assignments];
@@ -50,37 +114,66 @@ const UpdateFrostingQty = ({ isOpen, onClose, orderData, itemData, onUpdate }) =
     setAssignments(newAssignments);
   };
 
-  // Fixed: Calculate current progress based only on frosting completed_qty
+  // Calculate current progress based on team's completed_qty
   const calculateProgress = (bottle) => {
-    const completed = bottle.frostingCompleted || 0;
-    const total = bottle.frostingQty || 0;
+    const completed = bottle.teamCompleted || 0;
+    const total = bottle.teamQty || 0;
     return total > 0 ? Math.min((completed / total) * 100, 100) : 0;
   };
 
-  // New: Calculate progress after adding today's quantity
+  // Calculate progress after adding today's quantity
   const calculateNewProgress = (bottle, todayQty) => {
-    const currentCompleted = bottle.frostingCompleted || 0;
+    const currentCompleted = bottle.teamCompleted || 0;
     const newCompleted = currentCompleted + (todayQty || 0);
-    const total = bottle.frostingQty || 0;
+    const total = bottle.teamQty || 0;
     return total > 0 ? Math.min((newCompleted / total) * 100, 100) : 0;
   };
 
-  // Fixed: Progress bar now shows current progress + preview of new progress
+  // Progress bar with dynamic colors based on team
   const ProgressBar = ({ assignment, todayQty }) => {
     const currentProgress = calculateProgress(assignment);
     const newProgress = calculateNewProgress(assignment, todayQty);
     const addedProgress = newProgress - currentProgress;
 
+    const getProgressColors = () => {
+      switch (teamConfig.color) {
+        case 'blue':
+          return {
+            gradient: 'from-blue-800 via-blue-600 to-blue-500',
+            current: 'bg-blue-600',
+            text: 'text-blue-800'
+          };
+        case 'purple':
+          return {
+            gradient: 'from-purple-800 via-purple-600 to-purple-500',
+            current: 'bg-purple-600',
+            text: 'text-purple-800'
+          };
+        case 'yellow':
+          return {
+            gradient: 'from-yellow-800 via-yellow-600 to-yellow-500',
+            current: 'bg-yellow-600',
+            text: 'text-yellow-800'
+          };
+        default:
+          return {
+            gradient: 'from-orange-800 via-orange-600 to-orange-500',
+            current: 'bg-orange-600',
+            text: 'text-orange-800'
+          };
+      }
+    };
+
+    const colors = getProgressColors();
+
     return (
       <div className="w-full flex items-center space-x-2">
-        <div className="flex-1 p-[1px] rounded-full bg-gradient-to-r from-orange-800 via-orange-600 to-orange-500">
+        <div className={`flex-1 p-[1px] rounded-full bg-gradient-to-r ${colors.gradient}`}>
           <div className="bg-white rounded-full h-3 sm:h-4 px-1 flex items-center overflow-hidden">
-            {/* Current completed progress */}
             <div
-              className="bg-orange-600 h-1.5 sm:h-2.5 rounded-full transition-all duration-300"
+              className={`${colors.current} h-1.5 sm:h-2.5 rounded-full transition-all duration-300`}
               style={{ width: `${currentProgress}%` }}
             />
-            {/* Preview of today's addition */}
             {addedProgress > 0 && (
               <div
                 className="bg-green-500 h-1.5 sm:h-2.5 rounded-full transition-all duration-300 -ml-1"
@@ -89,74 +182,52 @@ const UpdateFrostingQty = ({ isOpen, onClose, orderData, itemData, onUpdate }) =
             )}
           </div>
         </div>
-        <span className="text-xs sm:text-sm font-semibold text-orange-800 whitespace-nowrap">
+        <span className={`text-xs sm:text-sm font-semibold ${colors.text} whitespace-nowrap`}>
           {newProgress.toFixed(0)}%
         </span>
       </div>
     );
   };
 
-const handleSave = async () => {
-  try {
-    setLoading(true);
-    setError(null);
-
-    const updates = assignments
-      .filter(assignment => assignment.todayQty > 0)
-      .map(assignment => ({
-        component_id: assignment.component_id,
-        quantity_produced: assignment.todayQty,
-        username: 'frosting_admin',
-        notes: assignment.notes || 'qty produced',
-        date: new Date().toISOString()
-      }));
-
-    if (updates.length === 0) {
-      setError('Please enter quantity for at least one bottle');
-      setLoading(false);
-      return;
+  const getHeaderColors = () => {
+    switch (teamConfig.color) {
+      case 'blue':
+        return 'bg-blue-600';
+      case 'purple':
+        return 'bg-purple-600';
+      case 'yellow':
+        return 'bg-yellow-600';
+      default:
+        return 'bg-orange-600';
     }
+  };
 
-    for (let update of updates) {
-      const payload = {
-        team: "frosting", // ✅ This tells the server which team
-        order_number: orderData.order_number,
-        item_id: itemData?.item_id,
-        component_id: update.component_id,
-        updateData: {
-          date: update.date,
-          username: "frosting_admin", 
-          quantity_produced: update.quantity_produced,
-          notes: update.notes
-        }
-      };
-
-      // ✅ FIXED - use correct generic decoration production event
-      socket.emit("updateDecorationProduction", payload);
-
-      // Individual listeners for each update (same pattern as glass)
-      socket.once("frostingProductionUpdatedSelf", ({ order_number, item_id, component_id, updatedComponent }) => {
-        console.log("✅ Production updated:", order_number, item_id, component_id, updatedComponent);
-        onUpdate(order_number, item_id, component_id, updatedComponent, updatedComponent?.status);
-      });
-
-      socket.once("frostingProductionError", (error) => {
-        console.error("❌ frosting update failed:", error);
-        setError(error || "frosting update failed");
-      });
+  const getGradientColors = () => {
+    switch (teamConfig.color) {
+      case 'blue':
+        return 'from-blue-800 via-blue-600 to-blue-400';
+      case 'purple':
+        return 'from-purple-800 via-purple-600 to-purple-400';
+      case 'yellow':
+        return 'from-yellow-800 via-yellow-600 to-yellow-400';
+      default:
+        return 'from-orange-800 via-orange-600 to-orange-400';
     }
+  };
 
-    setSuccessMessage("Quantities updated successfully!");
-    setTimeout(() => {
-      onClose();
-    }, 1500);
+  const getButtonColors = () => {
+    switch (teamConfig.color) {
+      case 'blue':
+        return 'bg-blue-600 hover:bg-blue-700 focus:ring-blue-500';
+      case 'purple':
+        return 'bg-purple-600 hover:bg-purple-700 focus:ring-purple-500';
+      case 'yellow':
+        return 'bg-yellow-600 hover:bg-yellow-700 focus:ring-yellow-500';
+      default:
+        return 'bg-orange-600 hover:bg-orange-700 focus:ring-orange-500';
+    }
+  };
 
-  } catch (err) {
-    console.error("Error updating quantities:", err);
-    setError(err.message || "Failed to update quantities");
-    setLoading(false);
-  }
-};
   return (
     <Dialog open={isOpen} onClose={onClose}>
       <DialogBackdrop className="fixed inset-0 bg-gray-500/75 transition-opacity" />
@@ -164,13 +235,15 @@ const handleSave = async () => {
         <div className="flex min-h-full items-center justify-center p-2 sm:p-4">
           <DialogPanel className="w-full max-w-sm sm:max-w-4xl lg:max-w-7xl transform overflow-hidden rounded-lg bg-white shadow-xl transition-all">
 
-            {/* Header */}
-            <div className="bg-orange-600 text-white px-3 sm:px-4 py-3 flex justify-between items-start gap-4 rounded-t-lg">
+            {/* Header with dynamic colors */}
+            <div className={`${getHeaderColors()} text-white px-3 sm:px-4 py-3 flex justify-between items-start gap-4 rounded-t-lg`}>
               <div className="min-w-0 flex-1">
                 <DialogTitle as="h2" className="text-lg sm:text-xl font-bold">
-                  Update Bottle Production
+                  Update {teamConfig.name} Production
                 </DialogTitle>
-                <p className="text-orange-100 text-xs sm:text-sm mt-1 truncate">
+                <p className={`${teamConfig.color === 'yellow' ? 'text-yellow-100' : 
+                  teamConfig.color === 'blue' ? 'text-blue-100' : 
+                  teamConfig.color === 'purple' ? 'text-purple-100' : 'text-orange-100'} text-xs sm:text-sm mt-1 truncate`}>
                   Order #{orderData?.order_number} - {itemData?.item_name}
                 </p>
               </div>
@@ -197,8 +270,8 @@ const handleSave = async () => {
               </div>
             )}
 
-            {/* Desktop Header */}
-            <div className="hidden lg:block bg-gradient-to-r from-orange-800 via-orange-600 to-orange-400 px-4 py-3 mt-4 mx-4 rounded-md">
+            {/* Desktop Header with dynamic colors */}
+            <div className={`hidden lg:block bg-gradient-to-r ${getGradientColors()} px-4 py-3 mt-4 mx-4 rounded-md`}>
               <div className="grid gap-4 text-white font-semibold text-sm items-center"
                 style={{
                   gridTemplateColumns: '2fr 1fr 1fr 1fr 2fr 1.5fr'
@@ -215,9 +288,9 @@ const handleSave = async () => {
             <div className="max-h-[50vh] sm:max-h-96 overflow-y-auto p-3 sm:p-6">
               {assignments.length === 0 ? (
                 <div className="text-center py-8">
-                  <div className="text-gray-500 text-lg mb-2">No frosting components found</div>
+                  <div className="text-gray-500 text-lg mb-2">No {teamName} components found</div>
                   <div className="text-gray-400 text-sm">
-                    This item doesn't have any glass components with frosting requirements.
+                    This item doesn't have any glass components with {teamName} requirements.
                   </div>
                 </div>
               ) : (
@@ -229,29 +302,29 @@ const handleSave = async () => {
                     <div key={assignment.component_id} className="mb-4 last:mb-0">
 
                       {/* Desktop Layout */}
-                      <div className={`hidden lg:block border-b border-orange-100 px-6 py-4 ${bgColor} -mx-6`}>
+                      <div className={`hidden lg:block border-b border-gray-100 px-6 py-4 ${bgColor} -mx-6`}>
                         <div className="grid gap-4 text-sm items-center"
                           style={{
                             gridTemplateColumns: '2fr 1fr 1fr 1fr 2fr 1.5fr'
                           }}>
 
                           <div className="text-left">
-                            <div className="font-medium text-orange-900">{assignment.name}</div>
+                            <div className="font-medium text-gray-900">{assignment.name}</div>
                             <div className="text-xs text-gray-600">
                               ID: {assignment.component_id}
                             </div>
                           </div>
 
-                          <div className="text-center text-orange-900">
+                          <div className="text-center text-gray-900">
                             {assignment.neck_size || 'N/A'}mm
                           </div>
 
-                          <div className="text-center text-orange-900">
+                          <div className="text-center text-gray-900">
                             {assignment.capacity || 'N/A'}
                           </div>
 
-                          <div className="text-center text-orange-900 font-medium">
-                            {assignment.frostingQty}
+                          <div className="text-center text-gray-900 font-medium">
+                            {assignment.teamQty}
                           </div>
 
                           <div className="px-2">
@@ -260,7 +333,7 @@ const handleSave = async () => {
                               todayQty={assignment.todayQty || 0}
                             />
                             <div className="text-xs text-gray-500 mt-1 text-center">
-                              {assignment.frostingCompleted || 0} / {assignment.frostingQty}
+                              {assignment.teamCompleted || 0} / {assignment.teamQty}
                             </div>
                           </div>
 
@@ -290,22 +363,22 @@ const handleSave = async () => {
                       <div className={`lg:hidden ${bgColor} rounded-lg p-3 sm:p-4`}>
                         <div className="space-y-3">
                           <div className="border-b border-gray-200 pb-3">
-                            <h4 className="font-medium text-orange-900 text-sm sm:text-base">{assignment.name}</h4>
+                            <h4 className="font-medium text-gray-900 text-sm sm:text-base">{assignment.name}</h4>
                             <p className="text-xs text-gray-600 mt-1">ID: {assignment.component_id}</p>
                           </div>
 
                           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs sm:text-sm">
                             <div>
                               <span className="text-gray-600">Size:</span>
-                              <div className="font-medium text-orange-900">{assignment.neck_size || 'N/A'}mm</div>
+                              <div className="font-medium text-gray-900">{assignment.neck_size || 'N/A'}mm</div>
                             </div>
                             <div>
                               <span className="text-gray-600">Capacity:</span>
-                              <div className="font-medium text-orange-900">{assignment.capacity || 'N/A'}</div>
+                              <div className="font-medium text-gray-900">{assignment.capacity || 'N/A'}</div>
                             </div>
                             <div>
                               <span className="text-gray-600">Total:</span>
-                              <div className="font-medium text-orange-900">{assignment.frostingQty}</div>
+                              <div className="font-medium text-gray-900">{assignment.teamQty}</div>
                             </div>
                           </div>
 
@@ -313,7 +386,7 @@ const handleSave = async () => {
                             <div className="flex justify-between items-center mb-2">
                               <span className="text-xs text-gray-600">Progress:</span>
                               <span className="text-xs text-gray-500">
-                                {assignment.frostingCompleted || 0} / {assignment.frostingQty}
+                                {assignment.teamCompleted || 0} / {assignment.teamQty}
                               </span>
                             </div>
                             <ProgressBar 
@@ -364,7 +437,7 @@ const handleSave = async () => {
               <button
                 onClick={handleSave}
                 disabled={loading}
-                className="w-full sm:w-auto inline-flex items-center justify-center px-4 py-2 text-sm font-medium text-white bg-orange-600 border border-transparent rounded-md hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-orange-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                className={`w-full sm:w-auto inline-flex items-center justify-center px-4 py-2 text-sm font-medium text-white ${getButtonColors()} border border-transparent rounded-md disabled:opacity-50 disabled:cursor-not-allowed`}
               >
                 {loading ? (
                   <>
@@ -386,4 +459,4 @@ const handleSave = async () => {
   );
 };
 
-export default UpdateFrostingQty;
+export default UpdateTeamQty;

@@ -157,6 +157,7 @@ const GlassOrders = ({
           order_number: selectedOrder.order_number,
           item_id: selectedItem.item_id,
           component_id: selectedComponent.component_id,
+          component: selectedComponent,
           updateData: {
             dispatched_by: "glass_admim",
             notes: "Glass component dispatched to warehouse for final assembly."

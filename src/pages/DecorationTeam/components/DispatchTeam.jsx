@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { getSocket } from '../../../context/SocketContext.jsx';
+import { getSocket } from '../../../context/SocketContext';
 
-const DispatchPrinting = ({ isOpen, onClose, orderData, itemData, componentData, onUpdate }) => {
+const DispatchTeam = ({ isOpen, onClose, orderData, itemData, componentData, onUpdate, teamName, teamConfig }) => {
   const [loading, setLoading] = useState(false);
   const socket = getSocket();
 
@@ -11,12 +11,12 @@ const DispatchPrinting = ({ isOpen, onClose, orderData, itemData, componentData,
     setLoading(true);
     try {
       const payload = {
-        team: 'printing',
+        team: teamName,
         order_number: orderData.order_number,
         item_id: itemData.item_id,
         component_id: componentData.component_id,
         updateData: {
-          dispatched_by: 'printing_admin',
+          dispatched_by: `${teamName}_admin`,
           dispatch_date: new Date().toISOString()
         }
       };
@@ -31,6 +31,19 @@ const DispatchPrinting = ({ isOpen, onClose, orderData, itemData, componentData,
     }
   };
 
+  const getButtonColors = () => {
+    switch (teamConfig.color) {
+      case 'blue':
+        return 'bg-blue-600 hover:bg-blue-700';
+      case 'purple':
+        return 'bg-purple-600 hover:bg-purple-700';
+      case 'yellow':
+        return 'bg-yellow-600 hover:bg-yellow-700';
+      default:
+        return 'bg-orange-600 hover:bg-orange-700';
+    }
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -38,7 +51,7 @@ const DispatchPrinting = ({ isOpen, onClose, orderData, itemData, componentData,
       <div className="bg-white rounded-lg p-6 w-96">
         <h2 className="text-xl font-bold mb-4">Dispatch Component</h2>
         <p className="mb-4">
-          Are you sure you want to dispatch <strong>{componentData?.name}</strong>?
+          Are you sure you want to dispatch <strong>{componentData?.name}</strong> from {teamConfig.name}?
         </p>
         <p className="text-sm text-gray-600 mb-6">
           This will mark the component as dispatched and notify the next team in sequence.
@@ -55,7 +68,7 @@ const DispatchPrinting = ({ isOpen, onClose, orderData, itemData, componentData,
           <button
             onClick={handleDispatch}
             disabled={loading}
-            className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50"
+            className={`px-4 py-2 ${getButtonColors()} text-white rounded disabled:opacity-50`}
           >
             {loading ? 'Dispatching...' : 'Dispatch'}
           </button>
@@ -65,4 +78,4 @@ const DispatchPrinting = ({ isOpen, onClose, orderData, itemData, componentData,
   );
 };
 
-export default DispatchPrinting;
+export default DispatchTeam;

@@ -1,16 +1,9 @@
-import React from 'react'
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
-import { SocketProvider } from './context/SocketContext.jsx'
+import React from 'react';
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { SocketProvider } from './context/SocketContext';
+import GlassDashboard from './pages/glass/GlassDashboard';
 
-// Admin
-import Dashboard from './pages/Admin/Dashboard.jsx'
-
-// Teams
-import GlassDashboard from './pages/Glass/GlassDashboard.jsx'
-import PrintingDashboard from './pages/Printing/PrintingDashbaord.jsx'
-import CoatingDashboard from './pages/Coating/CoatingDashboard.jsx'
-import FrostingDashboard from './pages/Frosting/FrostingDashbaord.jsx'
-// import FoilingDashboard from './pages/Foiling/FoilingDashboard.jsx'
+import DecorationDashbaord from './pages/DecorationTeam/DecorationDashbaord';
 
 const App = () => {
   return (
@@ -18,18 +11,20 @@ const App = () => {
       <Router>
         <Routes>
           {/* Admin */}
-          <Route path="/" element={<Dashboard />} />
-
-          {/* Teams */}
-          <Route path="/glass" element={<Dashboard />} />
-          <Route path="/printing" element={<PrintingDashboard />} />
-          <Route path="/coating" element={<CoatingDashboard />} />
-          <Route path="/frosting" element={<FrostingDashboard />} />
-          {/* <Route path="/foiling" element={<FoilingDashboard />} /> */}
+          {/* <Route path="/" element={<Dashboard />} /> */}
+          
+          {/* Glass Team (separate component) */}
+          <Route path="/glass" element={<GlassDashboard />} />
+          
+          {/* All Decoration Teams use the same generic dashboard */}
+          <Route path="/printing" element={<DecorationDashbaord />} />
+          <Route path="/coating" element={<DecorationDashbaord />} />
+          <Route path="/frosting" element={<DecorationDashbaord />} />
+          <Route path="/foiling" element={<DecorationDashbaord />} />
         </Routes>
       </Router>
     </SocketProvider>
-  )
-}
+  );
+};
 
-export default App
+export default App;

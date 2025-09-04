@@ -248,7 +248,7 @@ const OrderTable = ({
                         )}
                       </div>
 
-                      {orderType === 'ready_to_dispatch' && isFirstRowOfItem && (
+                      {orderType === 'ready_to_dispatch' && (
                         <div className="text-center">
                           <button
                             onClick={() => handleVehicleDetails(order, item, glass)}
@@ -258,7 +258,7 @@ const OrderTable = ({
                           </button >
                         </div>
                       )}
-                      {orderType === 'ready_to_dispatch' && isFirstRowOfItem && (
+                      {orderType === 'ready_to_dispatch' && (
                         <div className="text-center">
                           <button
                             onClick={() => handleRollback(order, item, glass)}
@@ -268,7 +268,7 @@ const OrderTable = ({
                           </button >
                         </div>
                       )}
-                      {orderType === 'ready_to_dispatch' && isFirstRowOfItem && (
+                      {orderType === 'ready_to_dispatch' && (
                         <div className="text-center">
                           <button
                             onClick={() => handleDispatch(order, item, glass)}

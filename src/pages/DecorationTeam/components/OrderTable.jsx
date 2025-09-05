@@ -5,9 +5,9 @@ import { FcCancel } from "react-icons/fc";
 import {
   hasDecorationForTeam,
   canTeamWork,
-  canTeamApproveVehicles,
+  canTeamMarkVehiclesDelivered,
   getVehicleApprovalStatus,
-  parseDecorationSequence
+
 } from '../../../utils/DecorationSequence.jsx';
 
 const OrderTable = ({
@@ -50,10 +50,9 @@ const OrderTable = ({
   }
 
 
-
- const renderVehicleApproval = (glass, order, item) => {
-  const vehicleStatus = getVehicleApprovalStatus(glass, teamName);
-  const canApprove = canTeamApproveVehicles(glass, teamName);
+const renderVehicleApproval = (glass, order, item) => {
+  const vehicleStatus = getVehicleApprovalStatus(glass); // Fixed: removed teamName parameter
+  const canApprove = canTeamMarkVehiclesDelivered(glass, teamName);
   const vehicleCount = glass.vehicle_details?.length || 0;
 
   const getDisplayInfo = () => {
@@ -63,62 +62,49 @@ const OrderTable = ({
           text: 'No vehicles assigned',
           icon: <FcCancel size={16} />,
           color: 'text-gray-500',
-          clickable: canApprove
+          showModal: false
         };
       case 'PENDING':
         return {
           text: `${vehicleCount} vehicles pending`,
           icon: <FcCancel size={16} />,
           color: 'text-red-600',
-          clickable: true
+          showModal: true
         };
       case 'APPROVED':
         return {
           text: `${vehicleCount} vehicles approved`,
           icon: <FcApproval size={16} />,
           color: 'text-green-600',
-          clickable: canApprove
-        };
-      case 'WAITING_FOR_FIRST_TEAM':
-        const sequence = parseDecorationSequence(glass.deco_sequence);
-        const firstTeam = sequence[0];
-        return {
-          text: `Awaiting ${firstTeam}`,
-          icon: <FcCancel size={16} />,
-          color: 'text-orange-500',
-          clickable: false
-        };
-      case 'NOT_RESPONSIBLE':
-        return {
-          text: vehicleCount > 0 ? 'Other team manages' : 'N/A',
-          icon: <span className="text-gray-400">•</span>,
-          color: 'text-gray-400',
-          clickable: false
+          showModal: true
         };
       default:
         return {
           text: 'Unknown status',
           icon: <FcCancel size={16} />,
           color: 'text-gray-400',
-          clickable: false
+          showModal: false
         };
     }
   };
 
-  const { text, icon, color, clickable } = getDisplayInfo();
+  const { text, icon, color, showModal } = getDisplayInfo();
 
   const handleClick = () => {
-    if (clickable && canApprove) {
+    if (showModal) {
       handleVehicleModalOpen(order, item, glass.component_id);
     }
   };
 
+  // Show vehicle details to everyone when vehicles exist, but only first team can edit
+  const isClickable = showModal && vehicleCount > 0;
+
   return (
     <div className="flex flex-col items-center">
       <div 
-        className={`flex items-center gap-1 ${clickable ? 'cursor-pointer hover:opacity-80' : ''}`}
+        className={`flex items-center gap-1 ${isClickable ? 'cursor-pointer hover:opacity-80' : ''}`}
         onClick={handleClick}
-        title={clickable ? 'Click to manage vehicles' : text}
+        title={isClickable ? (canApprove ? 'Click to manage vehicles' : 'Click to view vehicles') : text}
       >
         {icon}
       </div>
@@ -128,7 +114,6 @@ const OrderTable = ({
     </div>
   );
 };
-
   // Get team-specific colors
   const getTeamColors = () => {
     const colorMap = {

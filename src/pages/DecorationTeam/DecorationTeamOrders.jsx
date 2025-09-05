@@ -7,7 +7,7 @@ import {
   hasDecorationForTeam,
   getWaitingMessage,
   getDecorationStatus,
-  canTeamApproveVehicles,
+  canTeamMarkVehiclesDelivered
   
 } from '../../utils/DecorationSequence.jsx';
 import Pagination from '../../utils/Pagination.jsx';
@@ -438,7 +438,7 @@ const canEditOrder = useCallback((order) => {
           searchTerm={searchTerm}
           setSearchTerm={setSearchTerm}
           setShowModal={setEditModalOpen}
-          canTeamApproveVehicles={canTeamApproveVehicles}
+          canTeamMarkVehiclesDelivered={canTeamMarkVehiclesDelivered}
           setSelectedOrder={setSelectedOrder}
           setSelectedItem={setSelectedItem}
           getTeamStatus={getTeamStatus}

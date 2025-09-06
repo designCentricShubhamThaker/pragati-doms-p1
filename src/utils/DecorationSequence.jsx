@@ -17,7 +17,7 @@ export const isFirstTeamInSequence = (component, team) => {
   return sequence.length > 0 && sequence[0] === team;
 };
 
-// SIMPLIFIED: Vehicle approval status - no complex team-specific logic
+// SIMPLIFIED: Vehicle approval status
 export const getVehicleApprovalStatus = (component) => {
   const vehicleDetails = component?.vehicle_details;
   
@@ -25,18 +25,20 @@ export const getVehicleApprovalStatus = (component) => {
     return 'NO_VEHICLES';
   }
 
-  const allApproved = vehicleDetails.every(v => 
-    v.approved || v.status === "DELIVERED"
+  const allDelivered = vehicleDetails.every(v => 
+    v.status === "DELIVERED" || v.received === true
   );
   
-  return allApproved ? 'APPROVED' : 'PENDING';
+  return allDelivered ? 'APPROVED' : 'PENDING';
 };
-// SIMPLIFIED: Only first team in sequence can approve vehicles
+
+// SIMPLIFIED: Only first team in sequence can mark vehicles as delivered
 export const canTeamMarkVehiclesDelivered = (component, teamName) => {
   if (!component || !teamName) return false;
   return isFirstTeamInSequence(component, teamName);
 };
-// SIMPLIFIED: Main work logic - now checks vehicle approval for first team
+
+// SIMPLIFIED: Main work logic
 export const canTeamWork = (component, team) => {
   if (!component || !component.deco_sequence) {
     return { canWork: true, reason: 'No decoration sequence', waitingFor: null };
@@ -55,11 +57,11 @@ export const canTeamWork = (component, team) => {
     return { canWork: false, reason: 'Not decoration approved', waitingFor: 'decoration_approval' };
   }
 
-  // First team can work once decoration approved, but needs vehicle approval if vehicles exist
+  // First team can work once decoration approved, but needs vehicles delivered if vehicles exist
   if (teamPosition === 0) {
     const vehicleStatus = getVehicleApprovalStatus(component);
     if (vehicleStatus === 'PENDING') {
-      return { canWork: false, reason: 'Vehicles need approval', waitingFor: 'vehicle_approval' };
+      return { canWork: false, reason: 'Vehicles need to be marked as delivered', waitingFor: 'vehicle_delivery' };
     }
     return { canWork: true, reason: 'First team ready', waitingFor: null };
   }
@@ -83,32 +85,32 @@ export const canTeamWork = (component, team) => {
 export const getVehicleInfo = (component, team) => {
   const vehicleDetails = component?.vehicle_details || [];
   const approvalStatus = getVehicleApprovalStatus(component);
-  const canApprove = canTeamApproveVehicles(component, team);
+  const canMarkDelivered = canTeamMarkVehiclesDelivered(component, team);
   const isFirstTeam = isFirstTeamInSequence(component, team);
 
   return {
     vehicles: vehicleDetails,
     count: vehicleDetails.length,
     status: approvalStatus,
-    canApprove: canApprove,
+    canMarkDelivered: canMarkDelivered,
     isResponsible: isFirstTeam,
-    needsApproval: approvalStatus === 'PENDING' && vehicleDetails.length > 0,
-    message: getVehicleStatusMessage(approvalStatus, canApprove, vehicleDetails.length)
+    needsDelivery: approvalStatus === 'PENDING' && vehicleDetails.length > 0,
+    message: getVehicleStatusMessage(approvalStatus, canMarkDelivered, vehicleDetails.length)
   };
 };
 
 // Helper function for vehicle status messages
-const getVehicleStatusMessage = (status, canApprove, vehicleCount) => {
+const getVehicleStatusMessage = (status, canMarkDelivered, vehicleCount) => {
   if (vehicleCount === 0) return 'No vehicles assigned';
   
   switch (status) {
     case 'APPROVED':
-      return 'All vehicles approved';
+      return 'All vehicles delivered ✓';
     case 'PENDING':
-      if (canApprove) {
-        return `${vehicleCount} vehicle(s) need approval`;
+      if (canMarkDelivered) {
+        return `${vehicleCount} vehicle(s) need to be marked as delivered`;
       } else {
-        return `Waiting for vehicle approval (${vehicleCount} vehicle(s))`;
+        return `Waiting for vehicle delivery confirmation (${vehicleCount} vehicle(s))`;
       }
     default:
       return 'Checking vehicle status...';
@@ -133,8 +135,8 @@ export const getWaitingMessage = (component, team) => {
   switch (waitingFor) {
     case 'decoration_approval':
       return 'Awaiting decoration approval';
-    case 'vehicle_approval':
-      return 'Vehicles need approval';
+    case 'vehicle_delivery':
+      return 'Vehicles need to be marked as delivered';
     case null:
       return reason || 'Cannot work';
     default:
@@ -142,7 +144,7 @@ export const getWaitingMessage = (component, team) => {
   }
 };
 
-// NEW: Check if component is relevant to team (for filtering)
+// Check if component is relevant to team (for filtering)
 export const isComponentRelevantToTeam = (component, team) => {
   if (!component || !component.deco_sequence) return false;
   const sequence = parseDecorationSequence(component.deco_sequence);

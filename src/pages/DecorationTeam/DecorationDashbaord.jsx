@@ -16,52 +16,24 @@ const TEAM_CONFIGS = {
     color: 'orange',
     title: 'Printing Department',
     mobileTitle: 'Printing',
-    socketRoom: 'printing',
-    socketEvents: {
-      production: 'printingProductionUpdated',
-      dispatch: 'printingDispatchUpdated',
-      productionError: 'printingProductionError',
-      dispatchError: 'printingDispatchError'
-    }
   },
   coating: {
     name: 'Coating',
     color: 'orange',
     title: 'Coating Department',
     mobileTitle: 'Coating',
-    socketRoom: 'coating',
-    socketEvents: {
-      production: 'coatingProductionUpdated',
-      dispatch: 'coatingDispatchUpdated',
-      productionError: 'coatingProductionError',
-      dispatchError: 'coatingDispatchError'
-    }
   },
   frosting: {
     name: 'Frosting',
     color: 'orange',
     title: 'Frosting Department',
     mobileTitle: 'Frosting',
-    socketRoom: 'frosting',
-    socketEvents: {
-      production: 'frostingProductionUpdated',
-      dispatch: 'frostingDispatchUpdated',
-      productionError: 'frostingProductionError',
-      dispatchError: 'frostingDispatchError'
-    }
   },
   foiling: {
     name: 'Foiling',
     color: 'orange',
     title: 'Foiling Department',
     mobileTitle: 'Foiling',
-    socketRoom: 'foiling',
-    socketEvents: {
-      production: 'foilingProductionUpdated',
-      dispatch: 'foilingDispatchUpdated',
-      productionError: 'foilingProductionError',
-      dispatchError: 'foilingDispatchError'
-    }
   }
 };
 
@@ -97,72 +69,72 @@ const DecorationDashbaord = ({ isEmbedded = false }) => {
   }
 
   const handleOrderUpdate = useCallback(
-  (
-    orderNumber,
-    itemId,
-    componentId,
-    updatedComponent,
-    newStatus,
-    itemChanges = {},
-    orderChanges = {}
-  ) => {
-    console.log(`🔄 ${teamName} order update received:`, {
+    (
       orderNumber,
       itemId,
       componentId,
       updatedComponent,
       newStatus,
-      itemChanges,
-      orderChanges,
-    });
+      itemChanges = {},
+      orderChanges = {}
+    ) => {
+      console.log(`🔄 ${teamName} order update received:`, {
+        orderNumber,
+        itemId,
+        componentId,
+        updatedComponent,
+        newStatus,
+        itemChanges,
+        orderChanges,
+      });
 
-    const STORAGE_KEY = getStorageKey(teamName);
-    let allOrders = getLocalStorageData(STORAGE_KEY) || [];
+      const STORAGE_KEY = getStorageKey(teamName);
+      let allOrders = getLocalStorageData(STORAGE_KEY) || [];
 
-    const orderIndex = allOrders.findIndex(order => order.order_number === orderNumber);
-    if (orderIndex === -1) {
-      console.warn(`⚠️ Order not found in ${teamName} storage:`, orderNumber);
-      return;
-    }
+      const orderIndex = allOrders.findIndex(order => order.order_number === orderNumber);
+      if (orderIndex === -1) {
+        console.warn(`⚠️ Order not found in ${teamName} storage:`, orderNumber);
+        return;
+      }
 
-    const currentOrder = allOrders[orderIndex];
+      const currentOrder = allOrders[orderIndex];
 
-    const updatedOrder = {
-      ...currentOrder,
-      status: orderChanges?.new_status || currentOrder.status,
-      items: currentOrder.items.map(item =>
-        item.item_id === itemId
-          ? {
+      const updatedOrder = {
+        ...currentOrder,
+        status: orderChanges?.new_status || currentOrder.status,
+        items: currentOrder.items.map(item =>
+          item.item_id === itemId
+            ? {
               ...item,
               status: itemChanges?.new_status || item.status,
               components: item.components.map(c =>
                 c.component_id === componentId
-                  ? { 
-                      ...c, 
-                      ...updatedComponent,
-                      // IMPORTANT: Preserve vehicle_details properly
-                      vehicle_details: updatedComponent.vehicle_details || c.vehicle_details
-                    }
+                  ? {
+                    ...c,
+                    ...updatedComponent,
+                    // IMPORTANT: Preserve vehicle_details properly
+                    vehicle_details: updatedComponent.vehicle_details || c.vehicle_details
+                  }
                   : c
               ),
             }
-          : item
-      ),
-    };
+            : item
+        ),
+      };
 
-    updateOrderInLocalStorage(teamName, updatedOrder);
-    
-    // Force refresh with new data
-    setGlobalState(prev => ({
-      ...prev,
-      refreshOrders: prev.refreshOrders + 1,
-      dataVersion: prev.dataVersion + 1 // Add version increment
-    }));
+      updateOrderInLocalStorage(teamName, updatedOrder);
 
-    console.log(`✅ ${teamName} order updated in storage and refresh triggered`);
-  },
-  [teamName]
-);
+      // Force refresh with new data
+      setGlobalState(prev => ({
+        ...prev,
+        refreshOrders: prev.refreshOrders + 1,
+        dataVersion: prev.dataVersion + 1
+      }));
+
+      console.log(`✅ ${teamName} order updated in storage and refresh triggered`);
+    },
+    [teamName]
+  );
 
   const handleOrdersUpdate = useCallback((newOrders) => {
     setGlobalState(prev => ({
@@ -171,272 +143,234 @@ const DecorationDashbaord = ({ isEmbedded = false }) => {
       dataVersion: prev.dataVersion + 1
     }));
   }, []);
+  // DecorationDashboard.jsx - Key fixes only, showing critical changes
 
+  useEffect(() => {
+    if (!socket || !teamConfig) return;
 
-useEffect(() => {
-  if (!socket || !teamConfig) return;
+    console.log(`🔌 [${teamName}] Setting up socket listeners for production room`);
 
-  console.log(`🔌 [${teamName}] Setting up socket listeners`);
-  // socket.emit("joinDecoration", { team: teamName });
-  socket.emit("joinRoom","decoration")
+    // Join single production room
+    socket.emit("joinProduction");
 
-  const handleProductionUpdate = ({ order_number, item_id, component_id, updatedComponent }) => {
-    console.log(`📢 [${teamName}] Production update received:`, { order_number, item_id, component_id });
-    handleOrderUpdate(order_number, item_id, component_id, updatedComponent, updatedComponent?.status);
-  };
-
-  const handleDispatchUpdate = ({ order_number, item_id, component_id, updatedComponent, itemChanges, orderChanges }) => {
-    console.log(`📦 [${teamName}] Dispatch update received:`, { order_number, item_id, component_id });
-    handleOrderUpdate(order_number, item_id, component_id, updatedComponent, updatedComponent?.status, itemChanges, orderChanges);
-  };
-
-  // IMPROVED: Component dispatched from glass with detailed filtering logic
-  const handleComponentFromGlass = ({
-    order_number,
-    item_id,
-    component_id,
-    component_name,
-    component_data,
-    deco_sequence,
-    timestamp
-  }) => {
-    console.log(`🎨 [${teamName}] Received glass dispatch notification:`, {
-      component_name,
-      deco_sequence,
-      timestamp: timestamp || 'no timestamp'
+    socket.on("joinedProduction", ({ message }) => {
+      console.log(`✅ [${teamName}] Production room joined:`, message);
     });
 
-    // Parse and validate sequence
-    if (!deco_sequence || typeof deco_sequence !== 'string') {
-      console.log(`⚠️ [${teamName}] No valid deco_sequence found, ignoring component ${component_name}`);
-      return;
-    }
+    // Filter decoration production updates by team
+    const handleDecorationProductionUpdated = ({ team, order_number, item_id, component_id, updatedComponent }) => {
+      if (team !== teamName) return;
 
-    const sequence = deco_sequence.split('_').filter(Boolean);
-    const isInSequence = sequence.includes(teamName);
-
-    console.log(`🔍 [${teamName}] Sequence analysis:`, {
-      raw_sequence: deco_sequence,
-      parsed_sequence: sequence,
-      team_in_sequence: isInSequence,
-      team_position: sequence.indexOf(teamName)
-    });
-
-    if (!isInSequence) {
-      console.log(`❌ [${teamName}] Not in sequence [${sequence.join(' → ')}] for component ${component_name}, ignoring`);
-      return;
-    }
-
-    console.log(`✅ [${teamName}] Processing component from glass: ${component_name}`);
-    console.log(`🚛 [${teamName}] Vehicle details received:`, component_data.vehicle_details?.length || 0, 'vehicles');
-
-    const updatedComponent = {
-      ...component_data,
-      vehicle_details: component_data.vehicle_details || [],
-      received_from_glass: true,
-      received_at: timestamp || new Date().toISOString(),
-      deco_sequence: deco_sequence
+      console.log(`📢 [${teamName}] Production update received:`, { order_number, item_id, component_id });
+      handleOrderUpdate(order_number, item_id, component_id, updatedComponent, updatedComponent?.status);
     };
 
-    handleOrderUpdate(order_number, item_id, component_id, updatedComponent);
-    
-    setGlobalState(prev => ({
-      ...prev,
-      refreshOrders: prev.refreshOrders + 1,
-    }));
-  };
+    // Filter decoration dispatch updates by team
+    const handleDecorationComponentDispatched = ({
+      team,
+      order_number,
+      item_id,
+      component_id,
+      updatedComponent,
+      itemChanges,
+      orderChanges
+    }) => {
+      if (team !== teamName) return;
 
-  // IMPROVED: Vehicle details updated with better filtering
-  const handleVehicleDetailsUpdated = ({ 
-    order_number, 
-    item_id, 
-    component_id, 
-    updatedComponent,
-    updated_by,
-    deco_sequence,
-    timestamp
-  }) => {
-    console.log(`🚛 [${teamName}] Received vehicle update notification:`, {
-      updated_by,
-      deco_sequence,
-      vehicle_count: updatedComponent.vehicle_details?.length || 0,
-      timestamp: timestamp || 'no timestamp'
-    });
-
-    // Parse and validate sequence
-    if (!deco_sequence || typeof deco_sequence !== 'string') {
-      console.log(`⚠️ [${teamName}] No valid deco_sequence in vehicle update, ignoring`);
-      return;
-    }
-
-    const sequence = deco_sequence.split('_').filter(Boolean);
-    const isInSequence = sequence.includes(teamName);
-
-    console.log(`🔍 [${teamName}] Vehicle update sequence check:`, {
-      raw_sequence: deco_sequence,
-      parsed_sequence: sequence,
-      team_in_sequence: isInSequence
-    });
-
-    if (!isInSequence) {
-      console.log(`❌ [${teamName}] Not in sequence [${sequence.join(' → ')}] for vehicle update, ignoring`);
-      return;
-    }
-
-    console.log(`✅ [${teamName}] Processing vehicle update from ${updated_by}`);
-    
-    const enhancedComponent = {
-      ...updatedComponent,
-      vehicle_details: updatedComponent.vehicle_details || [],
-      last_vehicle_update: timestamp || new Date().toISOString(),
-      updated_by: updated_by
+      console.log(`📦 [${teamName}] Dispatch update received:`, { order_number, item_id, component_id });
+      handleOrderUpdate(order_number, item_id, component_id, updatedComponent, updatedComponent?.status, itemChanges, orderChanges);
     };
-    
-    handleOrderUpdate(order_number, item_id, component_id, enhancedComponent, enhancedComponent?.status);
-    
-    setGlobalState(prev => ({
-      ...prev,
-      refreshOrders: prev.refreshOrders + 1,
-    }));
-  };
 
-  // IMPROVED: Vehicle approval required with filtering
-  const handleVehicleApprovalRequired = ({ 
-    order_number,
-    item_id,
-    component_id,
-    component_name,
-    vehicle_details,
-    deco_sequence,
-    timestamp
-  }) => {
-    console.log(`🔔 [${teamName}] Received vehicle approval notification:`, {
-      component_name,
+    const handleVehicleDetailsReceived = ({
+      order_number,
+      item_id,
+      component_id,
+      vehicle_details,
       deco_sequence,
-      vehicle_count: vehicle_details?.length || 0,
-      timestamp: timestamp || 'no timestamp'
-    });
+      timestamp
+    }) => {
+      console.log(`🚛 [${teamName}] Vehicle details received:`, {
+        order_number,
+        component_id,
+        vehicle_count: vehicle_details?.length || 0,
+        deco_sequence
+      });
 
-    // Parse and validate sequence
-    if (!deco_sequence || typeof deco_sequence !== 'string') {
-      console.log(`⚠️ [${teamName}] No valid deco_sequence in approval notification, ignoring`);
-      return;
-    }
+      // FIXED: Parse and validate sequence properly
+      if (!deco_sequence || typeof deco_sequence !== 'string') {
+        console.log(`⚠️ [${teamName}] No valid deco_sequence, ignoring vehicle details`);
+        return;
+      }
 
-    const sequence = deco_sequence.split('_').filter(Boolean);
-    const isInSequence = sequence.includes(teamName);
+      const sequence = deco_sequence.split('_').filter(Boolean);
+      const isInSequence = sequence.includes(teamName);
 
-    console.log(`🔍 [${teamName}] Approval notification sequence check:`, {
-      raw_sequence: deco_sequence,
-      parsed_sequence: sequence,
-      team_in_sequence: isInSequence,
-      is_first_team: sequence[0] === teamName
-    });
+      if (!isInSequence) {
+        console.log(`❌ [${teamName}] Not in sequence [${sequence.join(' → ')}], ignoring vehicle details`);
+        return;
+      }
 
-    if (!isInSequence) {
-      console.log(`❌ [${teamName}] Not in sequence [${sequence.join(' → ')}] for approval notification, ignoring`);
-      return;
-    }
+      console.log(`✅ [${teamName}] Processing vehicle details for sequence [${sequence.join(' → ')}]`);
 
-    // Check if this team is first (responsible for approval)
-    const isResponsibleTeam = sequence.length > 0 && sequence[0] === teamName;
-    
-    if (isResponsibleTeam) {
-      console.log(`🛑 [${teamName}] IS RESPONSIBLE for vehicle approval`);
-    } else {
-      console.log(`ℹ️ [${teamName}] NOT RESPONSIBLE for approval, just updating data`);
-    }
+      // All teams in sequence receive vehicle details
+      const updatedComponent = {
+        vehicle_details: vehicle_details || [],
+        deco_sequence: deco_sequence,
+        vehicles_received_at: timestamp || new Date().toISOString()
+      };
 
-    // Update component with vehicle details regardless of responsibility
-    const updatedComponent = { 
-      vehicle_details: vehicle_details || [],
-      needs_vehicle_approval: !isResponsibleTeam, // Only non-responsible teams wait
-      approval_required_at: timestamp || new Date().toISOString(),
-      deco_sequence: deco_sequence
+      handleOrderUpdate(order_number, item_id, component_id, updatedComponent);
     };
-    
-    handleOrderUpdate(order_number, item_id, component_id, updatedComponent);
-    
-    setGlobalState(prev => ({
-      ...prev,
-      refreshOrders: prev.refreshOrders + 1,
-    }));
-  };
-
-  // IMPROVED: Vehicle approval completed with filtering
-  const handleVehicleApprovalCompleted = ({ 
-    order_number, 
-    item_id, 
-    component_id, 
-    updatedComponent,
-    approved_by,
-    deco_sequence,
-    timestamp
-  }) => {
-    console.log(`✅ [${teamName}] Received approval completion notification:`, {
-      approved_by,
+    // FIXED: Vehicle marked as delivered - ALL teams in sequence receive this
+    const handleVehicleMarkedDelivered = ({
+      order_number,
+      item_id,
+      component_id,
+      vehicle_details,
       deco_sequence,
-      timestamp: timestamp || 'no timestamp'
-    });
+      marked_by,
+      timestamp
+    }) => {
+      console.log(`✅ [${teamName}] Vehicle delivery update received:`, {
+        order_number,
+        component_id,
+        marked_by,
+        deco_sequence
+      });
 
-    // Parse and validate sequence
-    if (!deco_sequence || typeof deco_sequence !== 'string') {
-      console.log(`⚠️ [${teamName}] No valid deco_sequence in approval completion, ignoring`);
-      return;
-    }
+      // Parse and validate sequence
+      if (!deco_sequence || typeof deco_sequence !== 'string') {
+        console.log(`⚠️ [${teamName}] No valid deco_sequence in delivery update, ignoring`);
+        return;
+      }
 
-    const sequence = deco_sequence.split('_').filter(Boolean);
-    const isInSequence = sequence.includes(teamName);
+      const sequence = deco_sequence.split('_').filter(Boolean);
+      const isInSequence = sequence.includes(teamName);
 
-    console.log(`🔍 [${teamName}] Approval completion sequence check:`, {
-      raw_sequence: deco_sequence,
-      parsed_sequence: sequence,
-      team_in_sequence: isInSequence
-    });
+      if (!isInSequence) {
+        console.log(`❌ [${teamName}] Not in sequence [${sequence.join(' → ')}] for delivery update, ignoring`);
+        return;
+      }
 
-    if (!isInSequence) {
-      console.log(`❌ [${teamName}] Not in sequence [${sequence.join(' → ')}] for approval completion, ignoring`);
-      return;
-    }
+      console.log(`✅ [${teamName}] Processing vehicle delivery update for sequence [${sequence.join(' → ')}]`);
 
-    console.log(`✅ [${teamName}] Processing approval completion from ${approved_by}`);
-    
-    const enhancedComponent = {
-      ...updatedComponent,
-      vehicles_approved: true,
-      approved_by: approved_by,
-      approved_at: timestamp || new Date().toISOString(),
-      needs_vehicle_approval: false,
-      deco_sequence: deco_sequence
+      const updatedComponent = {
+        vehicle_details: vehicle_details || [],
+        all_vehicles_delivered: true,
+        vehicles_delivered_by: marked_by,
+        vehicles_delivered_at: timestamp || new Date().toISOString(),
+        deco_sequence: deco_sequence
+      };
+
+      handleOrderUpdate(order_number, item_id, component_id, updatedComponent);
+
+      setGlobalState(prev => ({
+        ...prev,
+        refreshOrders: prev.refreshOrders + 1,
+      }));
     };
-    
-    handleOrderUpdate(order_number, item_id, component_id, enhancedComponent);
-    
-    setGlobalState(prev => ({
-      ...prev,
-      refreshOrders: prev.refreshOrders + 1,
-    }));
-  };
 
-  // Register all socket listeners
-  socket.on(teamConfig.socketEvents.production, handleProductionUpdate);
-  socket.on(teamConfig.socketEvents.dispatch, handleDispatchUpdate);
-  socket.on("componentDispatchedFromGlass", handleComponentFromGlass);
-  socket.on("vehicleDetailsUpdated", handleVehicleDetailsUpdated);
-  socket.on("vehicleApprovalRequired", handleVehicleApprovalRequired);
-  socket.on("vehicleApprovalCompleted", handleVehicleApprovalCompleted);
+    const handleComponentDispatchedFromGlass = ({
+      order_number,
+      item_id,
+      component_id,
+      component_data,
+      deco_sequence
+    }) => {
+      console.log(`🏭 [${teamName}] Component dispatched from glass:`, {
+        order_number,
+        component_id,
+        deco_sequence,
+        has_vehicles: component_data?.vehicle_details?.length > 0
+      });
 
-  // Cleanup
-  return () => {
-    console.log(`🔌 [${teamName}] Cleaning up socket listeners`);
-    socket.off(teamConfig.socketEvents.production, handleProductionUpdate);
-    socket.off(teamConfig.socketEvents.dispatch, handleDispatchUpdate);
-    socket.off("componentDispatchedFromGlass", handleComponentFromGlass);
-    socket.off("vehicleDetailsUpdated", handleVehicleDetailsUpdated);
-    socket.off("vehicleAprovalRequired", handleVehicleApprovalRequired);
-    socket.off("vehicleApprovalCompleted", handleVehicleApprovalCompleted);
-  };
-}, [socket, handleOrderUpdate, teamName, teamConfig]);
+      // Parse and validate sequence
+      if (!deco_sequence || typeof deco_sequence !== 'string') {
+        console.log(`⚠️ [${teamName}] No valid deco_sequence in glass dispatch, ignoring`);
+        return;
+      }
+
+      const sequence = deco_sequence.split('_').filter(Boolean);
+      const isInSequence = sequence.includes(teamName);
+
+      if (!isInSequence) {
+        console.log(`❌ [${teamName}] Not in sequence [${sequence.join(' → ')}] for glass dispatch, ignoring`);
+        return;
+      }
+
+      console.log(`✅ [${teamName}] Processing glass dispatch for sequence [${sequence.join(' → ')}]`);
+
+      // Update component with data from glass
+      const updatedComponent = {
+        ...component_data,
+        received_from_glass: true,
+        received_at: new Date().toISOString()
+      };
+
+      handleOrderUpdate(order_number, item_id, component_id, updatedComponent);
+    };
+
+    // FIXED: Add missing vehicle approval handler
+    const handleVehicleApprovalRequired = ({
+      order_number,
+      item_id,
+      component_id,
+      vehicle_details,
+      deco_sequence
+    }) => {
+      console.log(`🚛 [${teamName}] Vehicle approval required:`, {
+        order_number,
+        component_id,
+        vehicle_count: vehicle_details?.length || 0,
+        deco_sequence
+      });
+
+      // Parse and validate sequence
+      if (!deco_sequence || typeof deco_sequence !== 'string') {
+        console.log(`⚠️ [${teamName}] No valid deco_sequence in vehicle approval, ignoring`);
+        return;
+      }
+
+      const sequence = deco_sequence.split('_').filter(Boolean);
+      const isInSequence = sequence.includes(teamName);
+
+      if (!isInSequence) {
+        console.log(`❌ [${teamName}] Not in sequence [${sequence.join(' → ')}] for vehicle approval, ignoring`);
+        return;
+      }
+
+      console.log(`✅ [${teamName}] Processing vehicle approval for sequence [${sequence.join(' → ')}]`);
+
+      // Update component with vehicle details
+      const updatedComponent = {
+        vehicle_details: vehicle_details || [],
+        deco_sequence: deco_sequence,
+        vehicles_received_at: new Date().toISOString()
+      };
+
+      handleOrderUpdate(order_number, item_id, component_id, updatedComponent);
+    };
+
+    // Register socket listeners
+    socket.on("decorationProductionUpdated", handleDecorationProductionUpdated);
+    socket.on("decorationComponentDispatched", handleDecorationComponentDispatched);
+    socket.on("vehicleDetailsReceived", handleVehicleDetailsReceived); // NEW: All teams receive
+    socket.on("vehicleMarkedDelivered", handleVehicleMarkedDelivered); // NEW: All teams receive
+    socket.on("componentDispatchedFromGlass", handleComponentDispatchedFromGlass);
+    socket.on("vehicleApprovalRequired", handleVehicleApprovalRequired);
+
+    // Cleanup
+    return () => {
+      console.log(`🔌 [${teamName}] Cleaning up socket listeners`);
+      socket.off("joinedProduction");
+      socket.off("decorationProductionUpdated", handleDecorationProductionUpdated);
+      socket.off("decorationComponentDispatched", handleDecorationComponentDispatched);
+      socket.off("vehicleDetailsReceived", handleVehicleDetailsReceived);
+      socket.off("vehicleMarkedDelivered", handleVehicleMarkedDelivered);
+      socket.off("componentDispatchedFromGlass", handleComponentDispatchedFromGlass);
+      socket.off("vehicleApprovalRequired", handleVehicleApprovalRequired);
+    };
+  }, [socket, handleOrderUpdate, teamName, teamConfig]);
 
   const handleLogout = useCallback(() => {
     console.log('Logout clicked');
@@ -457,7 +391,7 @@ useEffect(() => {
   const mainMenuItems = [
     { id: 'liveOrders', label: 'Live Orders' },
     { id: 'ReadyToDispatch', label: 'Ready to Dispatch' },
-    { id: 'dispatched', label: 'Dispatched' },
+    { id: 'dispatched', label: 'Dispatched' }
   ];
 
   const refreshOrders = useCallback((orderType) => {
@@ -485,22 +419,13 @@ useEffect(() => {
 
     switch (activeMenuItem) {
       case 'liveOrders':
-        return <DecorationTeamOrders orderType='in_progress' {...commonProps} />;
+        return <DecorationTeamOrders {...commonProps} orderType="in_progress" />;
       case 'ReadyToDispatch':
-        return <DecorationTeamOrders orderType='ready_to_dispatch' {...commonProps} />;
+        return <DecorationTeamOrders {...commonProps} orderType="ready_to_dispatch" />;
       case 'dispatched':
-        return <DecorationTeamOrders orderType='dispatched' {...commonProps} />;
+        return <DecorationTeamOrders {...commonProps} orderType="dispatched" />;
       default:
-        return (
-          <div className="p-4">
-            <h2 className="text-xl font-bold mb-2">
-              {mainMenuItems.find(item => item.id === activeMenuItem)?.label || 'Page Not Found'}
-            </h2>
-            <p className="text-gray-600">
-              This section is under development. Content for "{activeMenuItem}" will be added soon.
-            </p>
-          </div>
-        );
+        return <DecorationTeamOrders {...commonProps} orderType="in_progress" />;
     }
   };
 
@@ -582,8 +507,8 @@ useEffect(() => {
                   <button
                     onClick={() => handleMenuClick(item.id)}
                     className={`w-full flex items-center justify-between px-3 py-2 text-sm font-medium rounded-lg transition-all duration-200 ${activeMenuItem === item.id
-                        ? colorClasses.active
-                        : `text-gray-600 ${colorClasses.hover}`
+                      ? colorClasses.active
+                      : `text-gray-600 ${colorClasses.hover}`
                       }`}
                   >
                     {item.label}
@@ -613,8 +538,8 @@ useEffect(() => {
                 <button
                   onClick={() => handleMenuClick(item.id)}
                   className={`flex items-center px-4 py-3 text-sm font-medium whitespace-nowrap transition-all duration-200 border-b-2 z-0 ${activeMenuItem === item.id
-                      ? colorClasses.active
-                      : `text-gray-600 border-transparent ${colorClasses.hover}`
+                    ? colorClasses.active
+                    : `text-gray-600 border-transparent ${colorClasses.hover}`
                     }`}
                 >
                   {item.label}

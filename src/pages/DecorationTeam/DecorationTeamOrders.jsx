@@ -258,6 +258,10 @@ const canEditOrder = useCallback((order) => {
     setEditModalOpen(true);
   }, [canEditOrder, teamName]);
 
+  const handlePageChange = useCallback((page) => {
+    setCurrentPage(page);
+  }, []);
+
   const handleDispatchClick = useCallback((order, item, component) => {
     const teamStatus = getTeamStatus(component);
     if (teamStatus !== 'READY_TO_DISPATCH') {
@@ -448,7 +452,11 @@ const canEditOrder = useCallback((order) => {
       <Pagination
         currentPage={currentPage}
         totalPages={totalPages}
-        onPageChange={setCurrentPage}
+        ordersPerPage={ordersPerPage}
+        filteredOrders={filteredOrders}
+        orders={currentOrders}
+        searchTerm={searchTerm}
+        handlePageChange={handlePageChange}
       />
 
       <UpdateTeamQty

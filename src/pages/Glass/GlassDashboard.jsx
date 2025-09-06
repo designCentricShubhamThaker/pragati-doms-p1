@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { Menu, ChevronLeft } from 'lucide-react';
 import { FaPowerOff } from "react-icons/fa";
@@ -83,285 +82,204 @@ const GlassDashboard = ({ isEmbedded = false }) => {
     initializeData();
   }, [fetchGlassMaster]);
 
-  useEffect(() => {
-    if (!socket) return;
-    socket.emit("joinGlass");
+// GlassDashboard.jsx - REMOVED vehicle approval logic, Glass only dispatches
 
-    socket.on("joinedGlass", ({ message }) => {
-      console.log("✅ Glass room joined:", message);
+useEffect(() => {
+  if (!socket) return;
+  
+  // Join single production room
+  socket.emit("joinProduction");
+
+  socket.on("joinedProduction", ({ message }) => {
+    console.log("✅ Production room joined:", message);
+  });
+
+  // Glass-specific stock updates
+  const handleGlassStockUpdated = ({ data_code, newStock }) => {
+    setGlobalState(prev => {
+      const currentGlass = prev.allProducts.find(g => g.data_code === data_code);
+      if (!currentGlass || currentGlass.available_stock === newStock) return prev;
+
+      const updatedProducts = prev.allProducts.map(g =>
+        g.data_code === data_code ? { ...g, available_stock: newStock } : g
+      );
+      localStorage.setItem("glassMaster", JSON.stringify(updatedProducts));
+
+      return {
+        ...prev,
+        allProducts: updatedProducts,
+        dataVersion: prev.dataVersion + 1
+      };
+    });
+  };
+
+  // Glass master CRUD operations
+  const handleGlassAdded = (newGlass) => {
+    setGlobalState(prev => {
+      const updatedProducts = [...prev.allProducts, newGlass];
+      localStorage.setItem("glassMaster", JSON.stringify(updatedProducts));
+      return {
+        ...prev,
+        allProducts: updatedProducts,
+        dataVersion: prev.dataVersion + 1
+      };
+    });
+  };
+
+  const handleGlassUpdated = (updatedGlass) => {
+    setGlobalState(prev => {
+      const updatedProducts = prev.allProducts.map(p =>
+        p._id === updatedGlass._id ? updatedGlass : p
+      );
+      localStorage.setItem("glassMaster", JSON.stringify(updatedProducts));
+
+      return {
+        ...prev,
+        allProducts: updatedProducts,
+        dataVersion: prev.dataVersion + 1
+      };
+    });
+  };
+
+  const handleGlassDeleted = ({ productId }) => {
+    setGlobalState(prev => {
+      const updatedProducts = prev.allProducts.filter(g => g._id !== productId);
+      localStorage.setItem("glassMaster", JSON.stringify(updatedProducts));
+
+      return {
+        ...prev,
+        allProducts: updatedProducts,
+        dataVersion: prev.dataVersion + 1
+      };
+    });
+  };
+
+  // Glass production updates
+  const handleGlassProductionUpdated = ({ order_number, item_id, component_id, updatedComponent }) => {
+    console.log("📢 Glass production update received:", order_number, item_id, component_id, updatedComponent);
+    handleOrderUpdate(order_number, item_id, component_id, updatedComponent, updatedComponent?.status);
+  };
+
+  // Glass stock adjustments
+  const handleGlassStockAdjusted = ({ dataCode, newStock }) => {
+    console.log("📢 Glass stock adjustment received:", dataCode, newStock);
+
+    const masterData = getLocalStorageData('glassMaster') || [];
+    const updatedData = masterData.map((p) =>
+      p.data_code === dataCode ? { ...p, available_stock: newStock } : p
+    );
+
+    handleStockUpdate(updatedData);
+    localStorage.setItem("glassMaster", JSON.stringify(updatedData));
+  };
+
+  // Glass negative adjustments
+  const handleGlassNegativeAdjustmentUpdated = ({
+    order_number,
+    item_id,
+    component_id,
+    updatedComponent,
+    adjustmentSummary,
+    itemChanges,
+    orderChanges
+  }) => {
+    console.log("📢 Glass negative adjustment update received:", {
+      order_number,
+      component: updatedComponent,
+      summary: adjustmentSummary
     });
 
-    const handleGlassBroadcast = ({ data_code, newStock }) => {
-      setGlobalState(prev => {
-        const currentGlass = prev.allProducts.find(g => g.data_code === data_code);
-        if (!currentGlass || currentGlass.available_stock === newStock) return prev;
-
-        const updatedProducts = prev.allProducts.map(g =>
-          g.data_code === data_code ? { ...g, available_stock: newStock } : g
-        );
-        localStorage.setItem("glassMaster", JSON.stringify(updatedProducts));
-
-        return {
-          ...prev,
-          orders: updatedProducts,
-          dataVersion: prev.dataVersion + 1
-        };
-      });
-    };
-
-    const handleGlassDeletedBroadcast = (deletedProductId) => {
-      setGlobalState(prev => {
-        const updatedProducts = prev.allProducts.filter(g => g._id !== deletedProductId?.productId);
-        localStorage.setItem("glassMaster", JSON.stringify(updatedProducts));
-
-        return {
-          ...prev,
-          orders: updatedProducts,
-          dataVersion: prev.dataVersion + 1
-        };
-      });
-    };
-
-    const handleGlassAddedBroadcast = (newGlass) => {
-      setGlobalState(prev => {
-        const updatedProducts = [...prev.allProducts, newGlass];
-        localStorage.setItem("glassMaster", JSON.stringify(updatedProducts));
-        return {
-          ...prev,
-          orders: updatedProducts,
-          dataVersion: prev.dataVersion + 1
-        };
-      });
-    };
-
-    const handleGlassUpdatedBroadcast = (updatedPump) => {
-      setGlobalState(prev => {
-        const updatedProducts = prev.allProducts.map(p =>
-          p._id === updatedPump._id ? updatedPump : p
-        );
-        localStorage.setItem("glassMaster", JSON.stringify(updatedProducts));
-
-        return {
-          ...prev,
-          allProducts: updatedProducts,
-          dataVersion: prev.dataVersion + 1
-        };
-      });
-    };
-
-    const handleGlassProductionUpdated = ({ order_number, item_id, component_id, updatedComponent }) => {
-      console.log("📢 Glass production update received:", order_number, item_id, component_id, updatedComponent);
-      handleOrderUpdate(order_number, item_id, component_id, updatedComponent, updatedComponent?.status);
-    };
-
-    const handleGlassStockAdjusted = ({ dataCode, newStock }) => {
-      console.log("📢 Broadcasted stock adjustment received:", dataCode, newStock);
-
-      const team = "glass";
-      const key = `${team}Master`;
-      const masterData = getLocalStorageData(key) || [];
-
-      const updatedData = masterData.map((p) =>
-        p.data_code === dataCode ? { ...p, available_stock: newStock } : p
-      );
-
-      handleStockUpdate(updatedData);
-      localStorage.setItem("glassMaster", JSON.stringify(updatedData));
-    }
-
-    const handleNegativeAdjustment = ({
+    handleOrderUpdate(
       order_number,
       item_id,
       component_id,
       updatedComponent,
-      adjustmentSummary,
+      updatedComponent?.status,
       itemChanges,
       orderChanges
-    }) => {
-      console.log("📢 Received negative adjustment update from another user:", {
-        order_number,
-        component: updatedComponent,
-        summary: adjustmentSummary
-      });
+    );
+  };
 
-      handleOrderUpdate(
-        order_number,
-        item_id,
-        component_id,
-        updatedComponent,
-        updatedComponent?.status,
-        itemChanges,
-        orderChanges
-      );
-    }
-
-    const handleVehicleDetailsReceived = ({
+  // Glass dispatch updates - SIMPLIFIED
+  const handleGlassDispatchUpdated = ({
+    order_number,
+    item_id,
+    component_id,
+    updatedComponent,
+    itemChanges,
+    orderChanges
+  }) => {
+    console.log("📦 Glass dispatch update received:", {
       order_number,
-      item_id,
       component_id,
-      component_name,
-      vehicle_details,
-      deco_sequence,
-      from_team,
-      can_approve,
-      approval_team,
-      team_position,
-      total_teams
-    }) => {
-      console.log("🚛 Vehicle details received from glass:", {
-        order_number,
-        item_id,
-        component_id,
-        component_name,
-        can_approve,
-        approval_team
-      });
-
-      // Update the component with vehicle details in local storage
-      handleOrderUpdate(
-        order_number,
-        item_id,
-        component_id,
-        { vehicle_details, can_approve_vehicles: can_approve },
-        null 
-      );
-    };
-
-    // NEW: Handle vehicle approval updates
-    const handleVehicleApprovalUpdated = ({
-      order_number,
-      item_id,
-      component_id,
-      updatedComponent,
-      approved_by
-    }) => {
-      console.log("✅ Vehicle approval update received:", {
-        order_number,
-        component_id,
-        approved_by
-      });
-
-      handleOrderUpdate(
-        order_number,
-        item_id,
-        component_id,
-        updatedComponent,
-        null // Don't change status
-      );
-    };
-
-    // NEW: Handle dispatch updates
-    const handleGlassDispatchUpdated = ({
-      order_number,
-      item_id,
-      component_id,
-      updatedComponent,
-      itemChanges,
-      orderChanges
-    }) => {
-      console.log("📦 Glass dispatch update received:", {
-        order_number,
-        component_id,
-        status: updatedComponent?.status
-      });
-
-      handleOrderUpdate(
-        order_number,
-        item_id,
-        component_id,
-        updatedComponent,
-        updatedComponent?.status,
-        itemChanges,
-        orderChanges
-      );
-    };
-
-    // NEW: Handle rollback updates
-    const handleGlassRollbackUpdated = ({
-      order_number,
-      item_id,
-      component_id,
-      updatedComponent,
-      itemChanges,
-      orderChanges
-    }) => {
-      console.log("🔄 Glass rollback update received:", {
-        order_number,
-        component_id,
-        status: updatedComponent?.status
-      });
-
-      handleOrderUpdate(
-        order_number,
-        item_id,
-        component_id,
-        updatedComponent,
-        updatedComponent?.status,
-        itemChanges,
-        orderChanges
-      );
-    };
-
-    // NEW: Handle vehicle updates
-    const handleGlassVehicleUpdated = ({
-      order_number,
-      item_id,
-      component_id,
-      updatedComponent
-    }) => {
-      console.log("🚛 Glass vehicle update received:", {
-        order_number,
-        component_id,
-        vehicle_details: updatedComponent?.vehicle_details
-      });
-
-      handleOrderUpdate(
-        order_number,
-        item_id,
-        component_id,
-        updatedComponent,
-        null 
-      );
-    };
-
-    socket.on("joinedGlass", ({ message }) => {
-      console.log("✅ Glass room joined:", message);
+      status: updatedComponent?.status
     });
-    
-    socket.on("glassStockUpdated", handleGlassBroadcast);
-    socket.on("glassDeleted", handleGlassDeletedBroadcast);
-    socket.on("glassAdded", handleGlassAddedBroadcast);
-    socket.on("glassUpdated", handleGlassUpdatedBroadcast);
-    socket.on("glassProductionUpdated", handleGlassProductionUpdated);
-    socket.on("glassStockAdjusted", handleGlassStockAdjusted);
-    socket.on("glassNegativeAdjustmentUpdated", handleNegativeAdjustment);
-    
-    // NEW: Register new event listeners for unified workflow
-    socket.on("vehicleDetailsReceived", handleVehicleDetailsReceived);
-    socket.on("vehicleApprovalUpdated", handleVehicleApprovalUpdated);
-    socket.on("glassDispatchUpdated", handleGlassDispatchUpdated);
-    socket.on("glassRollbackUpdated", handleGlassRollbackUpdated);
-    socket.on("glassVehicleUpdated", handleGlassVehicleUpdated);
 
-    return () => {
-      // Clean up all event listeners
-      socket.off("joinedGlass");
-      socket.off("glassStockUpdated", handleGlassBroadcast);
-      socket.off("glassDeleted", handleGlassDeletedBroadcast);
-      socket.off("glassAdded", handleGlassAddedBroadcast);
-      socket.off("glassUpdated", handleGlassUpdatedBroadcast);
-      socket.off("glassProductionUpdated", handleGlassProductionUpdated);
-      socket.off("glassStockAdjusted", handleGlassStockAdjusted);
-      socket.off("glassNegativeAdjustmentUpdated", handleNegativeAdjustment);
-      
-      // NEW: Clean up new event listeners
-      socket.off("vehicleDetailsReceived", handleVehicleDetailsReceived);
-      socket.off("vehicleApprovalUpdated", handleVehicleApprovalUpdated);
-      socket.off("glassDispatchUpdated", handleGlassDispatchUpdated);
-      socket.off("glassRollbackUpdated", handleGlassRollbackUpdated);
-      socket.off("glassVehicleUpdated", handleGlassVehicleUpdated);
-    };
-  }, [socket]);
+    handleOrderUpdate(
+      order_number,
+      item_id,
+      component_id,
+      updatedComponent,
+      updatedComponent?.status,
+      itemChanges,
+      orderChanges
+    );
+  };
+
+  // Glass rollback updates
+  const handleGlassRollbackUpdated = ({
+    order_number,
+    item_id,
+    component_id,
+    updatedComponent,
+    itemChanges,
+    orderChanges
+  }) => {
+    console.log("🔄 Glass rollback update received:", {
+      order_number,
+      component_id,
+      status: updatedComponent?.status
+    });
+
+    handleOrderUpdate(
+      order_number,
+      item_id,
+      component_id,
+      updatedComponent,
+      updatedComponent?.status,
+      itemChanges,
+      orderChanges
+    );
+  };
+
+  // REMOVED: All vehicle approval logic from glass dashboard
+  // Glass only needs to know about dispatch, not approve vehicles
+
+  // Register event listeners - REMOVED vehicle approval listeners
+  socket.on("glassStockUpdated", handleGlassStockUpdated);
+  socket.on("glassAdded", handleGlassAdded);
+  socket.on("glassUpdated", handleGlassUpdated);
+  socket.on("glassDeleted", handleGlassDeleted);
+  socket.on("glassProductionUpdated", handleGlassProductionUpdated);
+  socket.on("glassStockAdjusted", handleGlassStockAdjusted);
+  socket.on("glassNegativeAdjustmentUpdated", handleGlassNegativeAdjustmentUpdated);
+  socket.on("glassDispatchUpdated", handleGlassDispatchUpdated);
+  socket.on("glassRollbackUpdated", handleGlassRollbackUpdated);
+
+  return () => {
+    // Clean up event listeners - REMOVED vehicle approval cleanup
+    socket.off("joinedProduction");
+    socket.off("glassStockUpdated", handleGlassStockUpdated);
+    socket.off("glassAdded", handleGlassAdded);
+    socket.off("glassUpdated", handleGlassUpdated);
+    socket.off("glassDeleted", handleGlassDeleted);
+    socket.off("glassProductionUpdated", handleGlassProductionUpdated);
+    socket.off("glassStockAdjusted", handleGlassStockAdjusted);
+    socket.off("glassNegativeAdjustmentUpdated", handleGlassNegativeAdjustmentUpdated);
+    socket.off("glassDispatchUpdated", handleGlassDispatchUpdated);
+    socket.off("glassRollbackUpdated", handleGlassRollbackUpdated);
+  };
+}, [socket]);
 
   const handleOrderUpdate = useCallback(
     (
@@ -467,9 +385,6 @@ const GlassDashboard = ({ isEmbedded = false }) => {
     { id: 'GlassMaster', label: 'Glass Master' }
   ];
 
-
-
-
   const refreshOrders = useCallback((orderType) => {
     const TEAM = "glass";
     const ordersToLoad = getOrdersByStatus(TEAM, orderType);
@@ -493,46 +408,48 @@ const GlassDashboard = ({ isEmbedded = false }) => {
       refreshOrders
     };
 
-
-
     switch (activeMenuItem) {
-      case 'liveOrders':
-        return <GlassOrders orderType='in_progress' {...commonProps} />;
-      case 'ReadyToDispatch':
-        return <GlassOrders orderType='ready_to_dispatch' {...commonProps} />;
-      case 'dispatched':
-        return <GlassOrders orderType='dispatched' {...commonProps} />;
       case 'GlassMaster':
-        return (
-          <GlassMaster
-            allProducts={globalState.allProducts}
-            setAllProducts={(products) => handleStockUpdate(products)}
-            loading={globalState.loading}
-            error={globalState.error}
-            setFilterLoading={(loading) =>
-              setGlobalState(prev => ({ ...prev, loading }))
-            }
-            filterLoading={globalState.loading}
-            setGlassMasterReady={(ready) =>
-              setGlobalState(prev => ({ ...prev, glassMasterReady: ready }))
-            }
-          />
-        );
+        return <GlassMaster {...commonProps} />;
+      case 'liveOrders':
+        return <GlassOrders {...commonProps} orderType="in_progress" />;
+      case 'ReadyToDispatch':
+        return <GlassOrders {...commonProps} orderType="ready_to_dispatch" />;
+      case 'dispatched':
+        return <GlassOrders {...commonProps} orderType="dispatched" />;
       default:
-        return (
-          <div className="p-4">
-            <h2 className="text-xl font-bold mb-2">
-              {mainMenuItems.find(item => item.id === activeMenuItem)?.label || 'Page Not Found'}
-            </h2>
-            <p className="text-gray-600">
-              This section is under development. Content for "{activeMenuItem}" will be added soon.
-            </p>
-          </div>
-        );
+        return <GlassOrders {...commonProps} orderType="in_progress" />;
     }
   };
 
-  const headerConfig = {
+  if (globalState.loading && !globalState.glassMasterReady) {
+    return (
+      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading Glass Dashboard...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (globalState.error && !globalState.glassMasterReady) {
+    return (
+      <div className="min-h-screen bg-red-50 flex items-center justify-center">
+        <div className="text-center">
+          <h2 className="text-xl font-bold text-red-600 mb-2">Error Loading Data</h2>
+          <p className="text-red-500 mb-4">{globalState.error}</p>
+          <button 
+            onClick={fetchGlassMaster}
+            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
+ const headerConfig = {
     showGradient: !isEmbedded,
     showTime: !isEmbedded,
     title: isEmbedded ? "Bottle Department" : "Welcome to Bottle Department !",

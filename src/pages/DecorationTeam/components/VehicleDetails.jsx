@@ -20,58 +20,83 @@ const VehicleDetails = ({ isOpen, onClose, orderData, itemData, componentId, onU
     }
   }, [itemData, teamName]);
 
-  useEffect(() => {
-    if (!socket) return;
+  // In VehicleDetails.jsx - Replace the existing handleVehicleMarkedDelivered useEffect
 
-    const handleVehicleUpdated = ({ order_number, item_id, component_id, updatedComponent, deco_sequence }) => {
-      console.log(`${teamName} received vehicle update:`, { component_id, deco_sequence });
-      if (!deco_sequence || !deco_sequence.includes(teamName)) {
-        return;
-      }
+useEffect(() => {
+  if (!socket) return;
 
-      if (localItemData && order_number === orderData?.order_number && item_id === localItemData.item_id) {
-        const updatedLocalItemData = {
-          ...localItemData,
-          components: localItemData.components.map(comp =>
-            comp.component_id === component_id
-              ? {
-                ...comp,
-                ...updatedComponent,
-                vehicle_details: updatedComponent.vehicle_details || comp.vehicle_details
-              }
-              : comp
-          )
-        };
+  const handleVehicleMarkedDelivered = ({
+    order_number,
+    item_id,
+    component_id,
+    vehicle_details,
+    deco_sequence,
+    marked_by,
+    all_marked, // NEW: Check for this flag
+    timestamp
+  }) => {
+    console.log(`${teamName} received vehicle delivery update:`, {
+      component_id,
+      deco_sequence,
+      marked_by,
+      all_marked, // Log this
+      vehicle_count: vehicle_details?.length
+    });
 
-        setLocalItemData(updatedLocalItemData);
-      }
-      if (onUpdate) {
-        onUpdate(order_number, item_id, component_id, updatedComponent, updatedComponent?.status);
-      }
+    if (localItemData &&
+      order_number === orderData?.order_number &&
+      item_id === localItemData.item_id &&
+      component_id === componentId) {
 
-      setIsUpdating(false);
-    };
+      const updatedLocalItemData = {
+        ...localItemData,
+        components: localItemData.components.map(comp =>
+          comp.component_id === component_id
+            ? {
+              ...comp,
+              vehicle_details: vehicle_details || comp.vehicle_details,
+              all_vehicles_delivered: true,
+              vehicles_delivered_by: marked_by,
+              vehicles_delivered_at: timestamp || new Date().toISOString()
+            }
+            : comp
+        )
+      };
 
-    const handleVehicleError = (error) => {
-      console.error(`${teamName} vehicle update failed:`, error);
-      alert(`Vehicle update failed: ${error}`);
-      setIsUpdating(false);
-    };
+      console.log(`${teamName} updating local state with:`, updatedLocalItemData);
+      setLocalItemData(updatedLocalItemData);
+    }
 
-    socket.on("vehicleDetailsUpdated", handleVehicleUpdated);
-    socket.on("vehicleUpdateError", handleVehicleError);
+    // FIXED: Always call onUpdate for both single and all scenarios
+    if (onUpdate) {
+      const updatedComponent = {
+        vehicle_details: vehicle_details,
+        all_vehicles_delivered: true,
+        vehicles_delivered_by: marked_by,
+        vehicles_delivered_at: timestamp || new Date().toISOString()
+      };
+      
+      console.log(`${teamName} calling onUpdate with:`, updatedComponent);
+      onUpdate(order_number, item_id, component_id, updatedComponent, null);
+    }
 
-    return () => {
-      socket.off("vehicleDetailsUpdated", handleVehicleUpdated);
-      socket.off("vehicleUpdateError", handleVehicleError);
-    };
-  }, [socket, localItemData, orderData, onUpdate, teamName]);
+    setIsUpdating(false);
+  };
+
+  socket.on("vehicleMarkedDelivered", handleVehicleMarkedDelivered);
+
+  return () => {
+    socket.off("vehicleMarkedDelivered", handleVehicleMarkedDelivered);
+  };
+}, [socket, localItemData, orderData, onUpdate, teamName, componentId]);
+
+
 
   if (!isOpen || !orderData || !localItemData) return null;
 
 
   const handleVehicleReceived = async (componentId, vehicleIndex) => {
-    if (isUpdating) return;
+    if (isUpdating || !canEditVehicles) return;
     setIsUpdating(true);
 
     const component = localItemData.components.find(comp => comp.component_id === componentId);
@@ -88,7 +113,8 @@ const VehicleDetails = ({ isOpen, onClose, orderData, itemData, componentId, onU
           return {
             ...v,
             status: 'DELIVERED',
-            received: true
+            received: true,
+            delivered_at: new Date().toISOString()
           };
         }
         return v;
@@ -102,11 +128,11 @@ const VehicleDetails = ({ isOpen, onClose, orderData, itemData, componentId, onU
         updateData: {
           vehicle_details: updatedVehicleDetails
         },
-        deco_sequence: localItemData?.components.find(c => c.component_id === componentId)?.deco_sequence
+        deco_sequence: component.deco_sequence
       };
 
-      console.log(`${teamName} updating single vehicle:`, payload);
-      socket.emit("updateTeamVehicle", payload);
+      console.log(`${teamName} marking single vehicle as delivered:`, payload);
+      socket.emit("markVehicleDelivered", payload);
 
     } catch (error) {
       console.error(`Error updating ${teamName} vehicle status:`, error);
@@ -115,8 +141,9 @@ const VehicleDetails = ({ isOpen, onClose, orderData, itemData, componentId, onU
     }
   };
 
+  // FIXED: Mark all vehicles as delivered
   const handleMarkAllAsDelivered = async (componentId) => {
-    if (isUpdating) return;
+    if (isUpdating || !canEditVehicles) return;
     setIsUpdating(true);
 
     const component = localItemData.components.find(comp => comp.component_id === componentId);
@@ -130,7 +157,8 @@ const VehicleDetails = ({ isOpen, onClose, orderData, itemData, componentId, onU
       const updatedVehicleDetails = component.vehicle_details.map(vehicle => ({
         ...vehicle,
         status: 'DELIVERED',
-        received: true
+        received: true,
+        delivered_at: new Date().toISOString()
       }));
 
       const payload = {
@@ -140,11 +168,13 @@ const VehicleDetails = ({ isOpen, onClose, orderData, itemData, componentId, onU
         component_id: componentId,
         updateData: {
           vehicle_details: updatedVehicleDetails
-        }
+        },
+        deco_sequence: component.deco_sequence,
+        mark_all: true // Flag to indicate all vehicles being marked
       };
 
       console.log(`${teamName} marking all vehicles as delivered:`, payload);
-      socket.emit("updateTeamVehicle", payload);
+      socket.emit("markAllVehiclesDelivered", payload);
 
     } catch (error) {
       console.error('Error marking all vehicles as delivered:', error);
@@ -152,7 +182,6 @@ const VehicleDetails = ({ isOpen, onClose, orderData, itemData, componentId, onU
       setIsUpdating(false);
     }
   };
-
   const componentsWithVehicles = componentId
     ? localItemData.components?.filter(
       comp => comp.component_id === componentId &&

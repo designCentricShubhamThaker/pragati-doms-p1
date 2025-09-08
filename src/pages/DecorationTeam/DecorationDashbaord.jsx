@@ -68,73 +68,107 @@ const DecorationDashbaord = ({ isEmbedded = false }) => {
     );
   }
 
+  
+
   const handleOrderUpdate = useCallback(
-    (
+  (
+    orderNumber,
+    itemId,
+    componentId,
+    updatedComponent,
+    newStatus,
+    itemChanges = {},
+    orderChanges = {}
+  ) => {
+    console.log(`🔄 ${teamName} order update received:`, {
       orderNumber,
       itemId,
       componentId,
       updatedComponent,
       newStatus,
-      itemChanges = {},
-      orderChanges = {}
-    ) => {
-      console.log(`🔄 ${teamName} order update received:`, {
-        orderNumber,
-        itemId,
-        componentId,
-        updatedComponent,
-        newStatus,
-        itemChanges,
-        orderChanges,
-      });
+      itemChanges,
+      orderChanges,
+    });
 
-      const STORAGE_KEY = getStorageKey(teamName);
-      let allOrders = getLocalStorageData(STORAGE_KEY) || [];
+    const STORAGE_KEY = getStorageKey(teamName);
+    let allOrders = getLocalStorageData(STORAGE_KEY) || [];
 
-      const orderIndex = allOrders.findIndex(order => order.order_number === orderNumber);
-      if (orderIndex === -1) {
-        console.warn(`⚠️ Order not found in ${teamName} storage:`, orderNumber);
-        return;
-      }
+    const orderIndex = allOrders.findIndex(order => order.order_number === orderNumber);
+    if (orderIndex === -1) {
+      console.warn(`⚠️ Order not found in ${teamName} storage:`, orderNumber);
+      return;
+    }
 
-      const currentOrder = allOrders[orderIndex];
+    const currentOrder = allOrders[orderIndex];
 
-      const updatedOrder = {
-        ...currentOrder,
-        status: orderChanges?.new_status || currentOrder.status,
-        items: currentOrder.items.map(item =>
-          item.item_id === itemId
-            ? {
-              ...item,
-              status: itemChanges?.new_status || item.status,
-              components: item.components.map(c =>
-                c.component_id === componentId
-                  ? {
-                    ...c,
-                    ...updatedComponent,
-                    // IMPORTANT: Preserve vehicle_details properly
-                    vehicle_details: updatedComponent.vehicle_details || c.vehicle_details
-                  }
-                  : c
-              ),
-            }
-            : item
-        ),
-      };
+    // CRITICAL: Create deep copy to ensure reactivity
+    const updatedOrder = {
+      ...currentOrder,
+      status: orderChanges?.new_status || currentOrder.status,
+      items: currentOrder.items.map(item =>
+        item.item_id === itemId
+          ? {
+            ...item,
+            status: itemChanges?.new_status || item.status,
+            components: item.components.map(c =>
+              c.component_id === componentId
+                ? {
+                  ...c,
+                  ...updatedComponent,
+                  // Preserve existing data while updating
+                  decorations: {
+                    ...c.decorations,
+                    ...updatedComponent.decorations
+                  },
+                  // ADD: Force timestamp to ensure change detection
+                  last_updated: new Date().toISOString()
+                }
+                : c
+            ),
+          }
+          : item
+      ),
+    };
 
-      updateOrderInLocalStorage(teamName, updatedOrder);
+    // Update storage
+    updateOrderInLocalStorage(teamName, updatedOrder);
 
-      // Force refresh with new data
-      setGlobalState(prev => ({
+    // CRITICAL: Force UI refresh with incremented version AND new orders array
+    setGlobalState(prev => {
+      // Force complete orders array recreation to trigger re-render
+      const newOrders = prev.orders.map(order =>
+        order.order_number === orderNumber ? updatedOrder : { ...order }
+      );
+
+      const newState = {
         ...prev,
         refreshOrders: prev.refreshOrders + 1,
-        dataVersion: prev.dataVersion + 1
-      }));
+        dataVersion: prev.dataVersion + 1,
+        orders: newOrders
+      };
 
-      console.log(`✅ ${teamName} order updated in storage and refresh triggered`);
-    },
-    [teamName]
-  );
+      console.log(`✅ ${teamName} globalState updated:`, {
+        refreshOrders: newState.refreshOrders,
+        dataVersion: newState.dataVersion,
+        orderUpdated: orderNumber,
+        componentUpdated: componentId
+      });
+
+      return newState;
+    });
+
+    // FORCE: Trigger additional refresh after state update
+    setTimeout(() => {
+      setGlobalState(prev => ({
+        ...prev,
+        refreshOrders: prev.refreshOrders + 1
+      }));
+    }, 100);
+
+    console.log(`✅ ${teamName} order updated in storage and UI refresh triggered`);
+  },
+  [teamName]
+);
 
   const handleOrdersUpdate = useCallback((newOrders) => {
     setGlobalState(prev => ({
@@ -175,10 +209,94 @@ const DecorationDashbaord = ({ isEmbedded = false }) => {
       itemChanges,
       orderChanges
     }) => {
-      if (team !== teamName) return;
+      console.log(`📦 [${teamName}] Dispatch update received:`, {
+        order_number,
+        item_id,
+        component_id,
+        dispatched_team: team
+      });
 
-      console.log(`📦 [${teamName}] Dispatch update received:`, { order_number, item_id, component_id });
-      handleOrderUpdate(order_number, item_id, component_id, updatedComponent, updatedComponent?.status, itemChanges, orderChanges);
+      // IMPORTANT: All teams in sequence should receive this update
+      // to refresh their "Team Check" status, not just the dispatching team
+      if (updatedComponent?.deco_sequence) {
+        const sequence = updatedComponent.deco_sequence.split('_').filter(Boolean);
+        const isInSequence = sequence.includes(teamName);
+
+        if (isInSequence) {
+          console.log(`✅ [${teamName}] Processing dispatch update - ${team} completed in sequence [${sequence.join(' → ')}]`);
+
+          // Update the component to trigger UI refresh for all teams in sequence
+          handleOrderUpdate(
+            order_number,
+            item_id,
+            component_id,
+            updatedComponent,
+            updatedComponent?.status,
+            itemChanges,
+            orderChanges
+          );
+        } else {
+          console.log(`❌ [${teamName}] Not in sequence [${sequence.join(' → ')}], ignoring dispatch update`);
+        }
+      } else {
+        // Fallback: if no sequence, only update the specific team
+        if (team === teamName) {
+          handleOrderUpdate(
+            order_number,
+            item_id,
+            component_id,
+            updatedComponent,
+            updatedComponent?.status,
+            itemChanges,
+            orderChanges
+          );
+        }
+      }
+    };
+
+    const handleTeamCanStartWork = ({
+      order_number,
+      item_id,
+      component_id,
+      team,
+      deco_sequence,
+      previous_team,
+      timestamp
+    }) => {
+      console.log(`🚀 [${teamName}] Received team notification:`, {
+        order_number,
+        component_id,
+        notified_team: team,
+        previous_team_completed: previous_team,
+        current_team: teamName
+      });
+
+      // Parse and validate sequence
+      if (!deco_sequence || typeof deco_sequence !== 'string') {
+        console.log(`⚠️ [${teamName}] No valid deco_sequence in team notification, ignoring`);
+        return;
+      }
+
+      const sequence = deco_sequence.split('_').filter(Boolean);
+      const isInSequence = sequence.includes(teamName);
+
+      if (!isInSequence) {
+        console.log(`❌ [${teamName}] Not in sequence [${sequence.join(' → ')}] for team notification, ignoring`);
+        return;
+      }
+
+      // This affects ALL teams in the sequence, not just the notified team
+      // because the previous team's status changed and everyone needs to see the updated "Team Check"
+      console.log(`✅ [${teamName}] Processing team notification - ${previous_team} completed, affecting sequence [${sequence.join(' → ')}]`);
+
+      // Update component to trigger UI refresh for sequence status
+      const updatedComponent = {
+        deco_sequence: deco_sequence,
+        sequence_updated_at: timestamp || new Date().toISOString(),
+        last_completed_team: previous_team
+      };
+
+      handleOrderUpdate(order_number, item_id, component_id, updatedComponent);
     };
 
     const handleVehicleDetailsReceived = ({
@@ -262,13 +380,13 @@ const DecorationDashbaord = ({ isEmbedded = false }) => {
         deco_sequence: deco_sequence
       };
 
+      // CRITICAL: Call handleOrderUpdate to trigger UI refresh
       handleOrderUpdate(order_number, item_id, component_id, updatedComponent);
-
-      setGlobalState(prev => ({
-        ...prev,
-        refreshOrders: prev.refreshOrders + 1,
-      }));
     };
+
+    // 4. Fix in DecorationTeamOrders.jsx - Add forced refresh trigger
+
+
 
     const handleComponentDispatchedFromGlass = ({
       order_number,
@@ -358,6 +476,7 @@ const DecorationDashbaord = ({ isEmbedded = false }) => {
     socket.on("vehicleMarkedDelivered", handleVehicleMarkedDelivered); // NEW: All teams receive
     socket.on("componentDispatchedFromGlass", handleComponentDispatchedFromGlass);
     socket.on("vehicleApprovalRequired", handleVehicleApprovalRequired);
+    socket.on("teamCanStartWork", handleTeamCanStartWork);
 
     // Cleanup
     return () => {
@@ -369,6 +488,7 @@ const DecorationDashbaord = ({ isEmbedded = false }) => {
       socket.off("vehicleMarkedDelivered", handleVehicleMarkedDelivered);
       socket.off("componentDispatchedFromGlass", handleComponentDispatchedFromGlass);
       socket.off("vehicleApprovalRequired", handleVehicleApprovalRequired);
+       socket.off("teamCanStartWork", handleTeamCanStartWork);
     };
   }, [socket, handleOrderUpdate, teamName, teamConfig]);
 

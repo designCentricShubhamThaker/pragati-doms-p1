@@ -4,10 +4,10 @@ import { FcApproval } from "react-icons/fc";
 import { FcCancel } from "react-icons/fc";
 import {
   hasDecorationForTeam,
-  canTeamWork,
   canTeamMarkVehiclesDelivered,
   getVehicleApprovalStatus,
-
+  getSequenceWaitingMessage,
+  canGlassBeEdited
 } from '../../../utils/DecorationSequence.jsx';
 
 const OrderTable = ({
@@ -28,7 +28,6 @@ const OrderTable = ({
   canDispatchComponent,
   teamName,
   teamConfig,
-  getComponentWaitingMessage
 }) => {
 
   const toggleRowExpansion = (rowId) => {
@@ -49,72 +48,128 @@ const OrderTable = ({
     }, 0) || 0;
   }
 
+  const renderDecorationApproval = (glass) => {
+    const isApproved = glass.is_deco_approved;
 
-const renderVehicleApproval = (glass, order, item) => {
-  const vehicleStatus = getVehicleApprovalStatus(glass); // Fixed: removed teamName parameter
-  const canApprove = canTeamMarkVehiclesDelivered(glass, teamName);
-  const vehicleCount = glass.vehicle_details?.length || 0;
-
-  const getDisplayInfo = () => {
-    switch (vehicleStatus) {
-      case 'NO_VEHICLES':
-        return {
-          text: 'No vehicles assigned',
-          icon: <FcCancel size={16} />,
-          color: 'text-gray-500',
-          showModal: false
-        };
-      case 'PENDING':
-        return {
-          text: `${vehicleCount} vehicles pending`,
-          icon: <FcCancel size={16} />,
-          color: 'text-red-600',
-          showModal: true
-        };
-      case 'APPROVED':
-        return {
-          text: `${vehicleCount} vehicles approved`,
-          icon: <FcApproval size={16} />,
-          color: 'text-green-600',
-          showModal: true
-        };
-      default:
-        return {
-          text: 'Unknown status',
-          icon: <FcCancel size={16} />,
-          color: 'text-gray-400',
-          showModal: false
-        };
-    }
-  };
-
-  const { text, icon, color, showModal } = getDisplayInfo();
-
-  const handleClick = () => {
-    if (showModal) {
-      handleVehicleModalOpen(order, item, glass.component_id);
-    }
-  };
-
-  // Show vehicle details to everyone when vehicles exist, but only first team can edit
-  const isClickable = showModal && vehicleCount > 0;
-
-  return (
-    <div className="flex flex-col items-center">
-      <div 
-        className={`flex items-center gap-1 ${isClickable ? 'cursor-pointer hover:opacity-80' : ''}`}
-        onClick={handleClick}
-        title={isClickable ? (canApprove ? 'Click to manage vehicles' : 'Click to view vehicles') : text}
-      >
-        {icon}
+    return (
+      <div className="text-center flex justify-center col-span-1">
+        <div className={`flex items-center gap-1 px-2 py-1 rounded text-xs font-bold cursor-pointer hover:opacity-80 ${isApproved
+          ? 'text-green-800 border border-green-300'
+          : 'text-red-800  border border-red-300'
+          }`}>
+          {isApproved ? (
+            <>
+              <FcApproval size={14} />
+            </>
+          ) : (
+            <>
+              <FcCancel size={14} />
+            </>
+          )}
+        </div>
       </div>
-      <span className={`text-xs ${color} mt-1 text-center max-w-20`}>
-        {text}
-      </span>
-    </div>
-  );
-};
-  // Get team-specific colors
+    );
+  };
+
+  // UPDATED: Simplified team check using the new utility
+  const renderTeamCheck = (glass) => {
+    const waitingMessage = getSequenceWaitingMessage(glass, teamName);
+    let colorClass = 'text-gray-600 bg-gray-50 border-gray-200';
+
+    // Simplified status color mapping
+    if (waitingMessage === 'Dispatched') {
+      colorClass = 'text-green-800 bg-green-50 border-green-200';
+    } else if (waitingMessage === 'Ready to dispatch') {
+      colorClass = 'text-purple-800 bg-purple-50 border-purple-200';
+    } else if (waitingMessage === 'In progress') {
+      colorClass = 'text-blue-800 bg-blue-50 border-blue-200';
+    } else if (waitingMessage === 'Ready to start') {
+      colorClass = 'text-blue-800 bg-blue-50 border-blue-200';
+    } else if (waitingMessage.startsWith('Waiting')) {
+      colorClass = 'text-orange-800 bg-orange-50 border-orange-200';
+    } else if (waitingMessage.includes('approval') || waitingMessage.includes('delivery') || waitingMessage.includes('vehicle')) {
+      colorClass = 'text-red-800 bg-red-50 border-red-200';
+    }
+
+    return (
+      <div className='text-center col-span-2'>
+        <div className={`text-xs px-2 py-1 rounded border ${colorClass} inline-block max-w-full`}>
+          {waitingMessage}
+        </div>
+      </div>
+    );
+  };
+
+  // UPDATED: Use the simplified canGlassBeEdited function
+  const canEditGlass = (glass) => {
+    const { canEdit } = canGlassBeEdited(glass, teamName);
+    return canEdit;
+  };
+
+  const renderVehicleApproval = (glass, order, item) => {
+    const vehicleStatus = getVehicleApprovalStatus(glass);
+    const canApprove = canTeamMarkVehiclesDelivered(glass, teamName);
+    const vehicleCount = glass.vehicle_details?.length || 0;
+
+    const getDisplayInfo = () => {
+      switch (vehicleStatus) {
+        case 'NO_VEHICLES':
+          return {
+            text: 'No vehicles assigned',
+            icon: <FcCancel size={16} />,
+            color: 'text-gray-500',
+            showModal: false
+          };
+        case 'PENDING':
+          return {
+            text: `${vehicleCount} vehicles pending`,
+            icon: <FcCancel size={16} />,
+            color: 'text-red-600',
+            showModal: true
+          };
+        case 'APPROVED':
+          return {
+            text: `${vehicleCount} vehicles approved`,
+            icon: <FcApproval size={16} />,
+            color: 'text-green-600',
+            showModal: true
+          };
+        default:
+          return {
+            text: 'Unknown status',
+            icon: <FcCancel size={16} />,
+            color: 'text-gray-400',
+            showModal: false
+          };
+      }
+    };
+
+    const { text, icon, color, showModal } = getDisplayInfo();
+
+    const handleClick = () => {
+      if (showModal) {
+        handleVehicleModalOpen(order, item, glass.component_id);
+      }
+    };
+
+    const isClickable = showModal && vehicleCount > 0;
+
+    return (
+      <div className="flex flex-col items-center">
+        <div
+          className={`flex items-center gap-1 ${isClickable ? 'cursor-pointer hover:opacity-80' : ''}`}
+          onClick={handleClick}
+          title={isClickable ? (canApprove ? 'Click to manage vehicles' : 'Click to view vehicles') : text}
+        >
+          {icon}
+        </div>
+        <span className={`text-xs ${color} mt-1 text-center max-w-20`}>
+          {text}
+        </span>
+      </div>
+    );
+  };
+
   const getTeamColors = () => {
     const colorMap = {
       orange: {
@@ -190,7 +245,7 @@ const renderVehicleApproval = (glass, order, item) => {
       {/* Desktop view */}
       <div className="hidden xl:block">
         <div className={`bg-gradient-to-r ${colors.header} rounded-lg shadow-md py-3 px-4 mb-3`}>
-          <div className={`grid ${orderType === 'ready_to_dispatch' ? 'grid-cols-24' : 'grid-cols-24'} gap-1 text-white font-semibold text-xs items-center`}>
+          <div className={`grid ${orderType === 'ready_to_dispatch' ? 'grid-cols-25' : 'grid-cols-25'} gap-1 text-white font-semibold text-xs items-center`}>
             <div className="text-left col-span-2">Order #</div>
             <div className="text-left col-span-2">Manager</div>
             <div className="text-left col-span-2">Customer</div>
@@ -204,7 +259,7 @@ const renderVehicleApproval = (glass, order, item) => {
             <div className="text-left">Remaining</div>
             <div className="text-left flex justify-center">Priority</div>
             <div className="text-left flex justify-center col-span-2">Status</div>
-            <div className="text-left flex justify-center">Approval</div>
+            <div className="text-left flex justify-center">Deco Approval</div>
             <div className="text-left flex justify-center col-span-2">Veh Approval</div>
 
             {orderType === "ready_to_dispatch" && (
@@ -214,7 +269,7 @@ const renderVehicleApproval = (glass, order, item) => {
               <div className='text-left flex justify-center col-span-2'>Team Check</div>
             )}
 
-            <div className='text-left flex justify-center ' >Edit</div>
+            <div className='text-left flex justify-center '>Edit</div>
           </div>
         </div>
 
@@ -251,12 +306,11 @@ const renderVehicleApproval = (glass, order, item) => {
                   currentRow++;
 
                   const remainingQty = getRemainingQty(glass);
-                  const { canWork } = canTeamWork(glass, teamName);
 
                   return (
                     <div
                       key={`${order.order_number}-${item.item_name}-${glass.component_id}-${teamName}`}
-                      className={`grid ${orderType === 'ready_to_dispatch' ? 'grid-cols-24' : 'grid-cols-24'} gap-1 items-center py-2 px-3 text-xs ${bgColor}`}
+                      className={`grid ${orderType === 'ready_to_dispatch' ? 'grid-cols-25' : 'grid-cols-25'} gap-1 items-center py-2 px-3 text-xs ${bgColor}`}
                     >
                       <div className="text-left col-span-2">
                         {isFirstRowOfOrder ? (
@@ -322,7 +376,7 @@ const renderVehicleApproval = (glass, order, item) => {
                               title="Copy glass name to search"
                             >
                               <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
                               </svg>
                             </button>
                           )}
@@ -363,16 +417,15 @@ const renderVehicleApproval = (glass, order, item) => {
                         </span>
                       </div>
 
-                      <div className="text-left flex justify-center col-span-1">
-                        <span className={`px-2 py-1 rounded text-xs font-bold cursor-pointer hover:opacity-80 ${glass.is_deco_approved ? 'text-green-800' : 'text-red-800'}`}>
-                          {glass.is_deco_approved ? 'Approved' : 'Awaiting'}
-                        </span>
-                      </div>
+                      {/* Decoration Approval Column */}
+                      {renderDecorationApproval(glass)}
 
+                      {/* Vehicle Approval Column */}
                       <div className='text-left flex justify-center col-span-2'>
                         {renderVehicleApproval(glass, order, item)}
                       </div>
 
+                      {/* Dispatch Column for ready_to_dispatch */}
                       {orderType === 'ready_to_dispatch' && isFirstRowOfItem && (
                         <div className="text-center">
                           {canDispatchComponent(glass) && (
@@ -386,27 +439,21 @@ const renderVehicleApproval = (glass, order, item) => {
                         </div>
                       )}
 
-                      {orderType === "in_progress" && (
-                        <div className='text-center col-span-2'>
-                          {!canWork && getComponentWaitingMessage && (
-                            <div className="text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded mt-1">
-                              {getComponentWaitingMessage(glass)}
-                            </div>
-                          )}
-                        </div>
-                      )}
+                      {/* UPDATED: Team Check Column for in_progress */}
+                      {orderType === "in_progress" && renderTeamCheck(glass)}
 
+                      {/* UPDATED: Edit Column with simplified logic */}
                       <div className="text-center">
                         {isFirstRowOfItem && glass && hasDecorationForTeam(glass, teamName) && (
                           <button
                             onClick={() => handleEditClick(order, item)}
-                            disabled={!canEditOrder(order)}
-                            className={`p-1.5 rounded text-white transition-all ${canEditOrder(order)
-                              ? `${colors.button} cursor-pointer`
-                              : 'bg-gray-400 cursor-not-allowed opacity-50'
+                            disabled={!canEditGlass(glass)}
+                            className={`p-1.5 rounded text-white transition-all ${canEditGlass(glass)
+                                ? `${colors.button} cursor-pointer`
+                                : 'bg-gray-400 cursor-not-allowed opacity-50'
                               }`}
-                            title={!canEditOrder(order)
-                              ? 'All components must be decoration approved and have vehicles delivered'
+                            title={!canEditGlass(glass)
+                              ? getSequenceWaitingMessage(glass, teamName)
                               : 'Edit order'
                             }
                           >
@@ -423,7 +470,7 @@ const renderVehicleApproval = (glass, order, item) => {
         })}
       </div>
 
-      {/* Mobile view */}
+      {/* Mobile view - also updated team check */}
       <div className="xl:hidden space-y-4">
         {currentOrders.map((order) => (
           <div
@@ -471,7 +518,7 @@ const renderVehicleApproval = (glass, order, item) => {
                             : 'bg-gray-400 cursor-not-allowed opacity-50'
                             }`}
                           title={!canEditOrder(order)
-                            ? 'All components must be decoration approved and have vehicles delivered'
+                            ? 'No glasses in this order can be edited'
                             : 'Edit order'
                           }
                         >
@@ -486,7 +533,6 @@ const renderVehicleApproval = (glass, order, item) => {
                       const status = teamDecoration?.status;
                       const rowId = `${order.order_number}-${item.item_name}-${glass.name}-${teamName}`;
                       const isExpanded = expandedRows.has(rowId);
-                      const { canWork } = canTeamWork(glass, teamName);
 
                       return (
                         <div
@@ -506,7 +552,7 @@ const renderVehicleApproval = (glass, order, item) => {
                                     title="Copy glass name to search"
                                   >
                                     <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
                                     </svg>
                                   </button>
                                 )}
@@ -521,11 +567,13 @@ const renderVehicleApproval = (glass, order, item) => {
                                   {remainingQty}
                                 </span>
                               </div>
-                              {!canWork && getComponentWaitingMessage && (
-                                <div className="text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded mt-1">
-                                  {getComponentWaitingMessage(glass)}
-                                </div>
-                              )}
+                              {/* UPDATED: Team Check for mobile */}
+                              <div className="text-xs mt-1">
+                                <span className="text-gray-500">Team Check:</span>{" "}
+                                <span className="font-medium">
+                                  {getSequenceWaitingMessage(glass, teamName)}
+                                </span>
+                              </div>
                             </div>
 
                             <div className="flex items-center gap-2">

@@ -32,17 +32,21 @@ useEffect(() => {
     vehicle_details,
     deco_sequence,
     marked_by,
-    all_marked, // NEW: Check for this flag
+    all_marked,
     timestamp
   }) => {
     console.log(`${teamName} received vehicle delivery update:`, {
       component_id,
       deco_sequence,
       marked_by,
-      all_marked, // Log this
-      vehicle_count: vehicle_details?.length
+      all_marked,
+      vehicle_count: vehicle_details?.length,
+      current_order: orderData?.order_number,
+      current_item: localItemData?.item_id,
+      current_component: componentId
     });
 
+    // CRITICAL: Always update local state for matching component
     if (localItemData &&
       order_number === orderData?.order_number &&
       item_id === localItemData.item_id &&
@@ -63,11 +67,11 @@ useEffect(() => {
         )
       };
 
-      console.log(`${teamName} updating local state with:`, updatedLocalItemData);
+      console.log(`${teamName} updating local modal state`);
       setLocalItemData(updatedLocalItemData);
     }
 
-    // FIXED: Always call onUpdate for both single and all scenarios
+    // CRITICAL: Always call onUpdate regardless of modal state
     if (onUpdate) {
       const updatedComponent = {
         vehicle_details: vehicle_details,
@@ -76,8 +80,8 @@ useEffect(() => {
         vehicles_delivered_at: timestamp || new Date().toISOString()
       };
       
-      console.log(`${teamName} calling onUpdate with:`, updatedComponent);
-      onUpdate(order_number, item_id, component_id, updatedComponent, null);
+      console.log(`${teamName} propagating update to parent component`);
+      onUpdate(order_number, item_id, component_id, updatedComponent);
     }
 
     setIsUpdating(false);

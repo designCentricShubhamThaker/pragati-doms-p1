@@ -1,7 +1,16 @@
 import React, { useState } from 'react';
 import { getSocket } from '../../../context/SocketContext';
 
-const DispatchTeam = ({ isOpen, onClose, orderData, itemData, componentData, onUpdate, teamName, teamConfig }) => {
+const DispatchTeam = ({ 
+  isOpen, 
+  onClose, 
+  orderData, 
+  itemData, 
+  componentData, 
+  onUpdate, 
+  teamName, 
+  teamConfig 
+}) => {
   const [loading, setLoading] = useState(false);
   const socket = getSocket();
 
@@ -10,6 +19,30 @@ const DispatchTeam = ({ isOpen, onClose, orderData, itemData, componentData, onU
 
     setLoading(true);
     try {
+      // 1. First update local state immediately for instant UI feedback
+      const updatedComponent = {
+        ...componentData,
+        decorations: {
+          ...componentData.decorations,
+          [teamName]: {
+            ...componentData.decorations?.[teamName],
+            status: 'DISPATCHED',
+            dispatch_date: new Date().toISOString(),
+            dispatched_by: `${teamName}_admin`
+          }
+        }
+      };
+
+      // Update local state immediately
+      onUpdate(
+        orderData.order_number,
+        itemData.item_id,
+        componentData.component_id,
+        updatedComponent,
+        'DISPATCHED'
+      );
+
+      // 2. Then emit socket event for server update and other teams notification
       const payload = {
         team: teamName,
         order_number: orderData.order_number,
@@ -22,10 +55,43 @@ const DispatchTeam = ({ isOpen, onClose, orderData, itemData, componentData, onU
       };
 
       socket.emit("dispatchDecorationComponent", payload);
+
+      // 3. Listen for server response to handle any corrections
+      const handleDispatchResponse = (response) => {
+        if (response.success) {
+          console.log(`✅ [${teamName}] Dispatch confirmed by server`);
+          // Server response will trigger socket broadcast to other teams
+        } else {
+          console.error(`❌ [${teamName}] Dispatch failed on server:`, response.message);
+          alert(`Dispatch failed: ${response.message}`);
+          // Revert local changes if server failed
+          onUpdate(
+            orderData.order_number,
+            itemData.item_id,
+            componentData.component_id,
+            componentData, // Revert to original
+            componentData.decorations?.[teamName]?.status || 'PENDING'
+          );
+        }
+        socket.off("decorationDispatchUpdatedSelf", handleDispatchResponse);
+      };
+
+      // Listen for server response
+      socket.on("decorationDispatchUpdatedSelf", handleDispatchResponse);
+
       onClose();
     } catch (error) {
       console.error("Dispatch error:", error);
       alert("Failed to dispatch component");
+      
+      // Revert local changes on error
+      onUpdate(
+        orderData.order_number,
+        itemData.item_id,
+        componentData.component_id,
+        componentData,
+        componentData.decorations?.[teamName]?.status || 'PENDING'
+      );
     } finally {
       setLoading(false);
     }
@@ -56,7 +122,7 @@ const DispatchTeam = ({ isOpen, onClose, orderData, itemData, componentData, onU
         <p className="text-sm text-gray-600 mb-6">
           This will mark the component as dispatched and notify the next team in sequence.
         </p>
-        
+
         <div className="flex justify-end space-x-3">
           <button
             onClick={onClose}

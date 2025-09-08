@@ -83,7 +83,7 @@ const OrderTable = ({
           </div>
         </div>
 
-        {currentOrders.map((order) => {
+        {currentOrders.map((order,index) => {
           let totalRows = 0;
           order.items?.forEach((item) => {
             const glasses = item.components?.filter(c => c.component_type === "glass") || [];
@@ -94,7 +94,7 @@ const OrderTable = ({
 
           return (
             <div
-              key={`${order.order_number}`}
+              key={`${order.order_number}-${index}`}
 
               className="bg-white rounded-lg shadow-sm border border-orange-200 mb-3 overflow-hidden"
             >
@@ -289,9 +289,9 @@ const OrderTable = ({
       </div>
 
       <div className="xl:hidden space-y-4">
-        {currentOrders.map((order) => (
+        {currentOrders.map((order,index) => (
           <div
-            key={`mobile-order-${order.order_number}`}
+          key={`mobile-order-${order.order_number}-${index}`}
             className="bg-white rounded-lg shadow-sm border border-orange-200 overflow-hidden"
           >
             {/* Order Header */}

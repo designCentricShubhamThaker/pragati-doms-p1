@@ -4,7 +4,6 @@ import { Search, RefreshCcw, Filter, X } from 'lucide-react';
 import { getLocalStorageData, getStorageKey, initializeLocalStorage, getOrdersByStatus } from '../../utils/orderStorage.jsx';
 import {
   hasDecorationForTeam,
-  getSequenceWaitingMessage,
   getDecorationStatus,
   canTeamMarkVehiclesDelivered,
   canItemBeEdited,

@@ -71,36 +71,34 @@ const OrderTable = ({
     );
   };
 
-  // UPDATED: Simplified team check using the new utility
-  const renderTeamCheck = (glass) => {
-    const waitingMessage = getSequenceWaitingMessage(glass, teamName);
-    let colorClass = 'text-gray-600 bg-gray-50 border-gray-200';
 
-    // Simplified status color mapping
-    if (waitingMessage === 'Dispatched') {
-      colorClass = 'text-green-800 bg-green-50 border-green-200';
-    } else if (waitingMessage === 'Ready to dispatch') {
-      colorClass = 'text-purple-800 bg-purple-50 border-purple-200';
-    } else if (waitingMessage === 'In progress') {
-      colorClass = 'text-blue-800 bg-blue-50 border-blue-200';
-    } else if (waitingMessage === 'Ready to start') {
-      colorClass = 'text-blue-800 bg-blue-50 border-blue-200';
-    } else if (waitingMessage.startsWith('Waiting')) {
-      colorClass = 'text-orange-800 bg-orange-50 border-orange-200';
-    } else if (waitingMessage.includes('approval') || waitingMessage.includes('delivery') || waitingMessage.includes('vehicle')) {
-      colorClass = 'text-red-800 bg-red-50 border-red-200';
-    }
+const renderTeamCheck = (glass) => {
+  const waitingMessage = getSequenceWaitingMessage(glass, teamName);
+  
+  let colorClass = 'text-gray-600 bg-gray-50 border-gray-200';
 
-    return (
-      <div className='text-center col-span-2'>
-        <div className={`text-xs px-2 py-1 rounded border ${colorClass} inline-block max-w-full`}>
-          {waitingMessage}
-        </div>
+  if (waitingMessage === 'Completed') {
+    colorClass = 'text-green-800 bg-green-50 border-green-200';
+  } else if (waitingMessage === 'Ready to dispatch') {
+    colorClass = 'text-purple-800 bg-purple-50 border-purple-200';
+  } else if (waitingMessage === 'In progress') {
+    colorClass = 'text-blue-800 bg-blue-50 border-blue-200';
+  } else if (waitingMessage === 'Ready to start') {
+    colorClass = 'text-blue-800 bg-blue-50 border-blue-200';
+  } else if (waitingMessage.startsWith('Awaiting')) {
+    // All "Awaiting X" messages get orange color
+    colorClass = 'text-orange-800 bg-orange-50 border-orange-200';
+  }
+
+  return (
+    <div className='text-center col-span-2'>
+      <div className={`text-xs px-2 py-1 rounded border ${colorClass} inline-block max-w-full`}>
+        {waitingMessage}
       </div>
-    );
-  };
+    </div>
+  );
+};
 
-  // UPDATED: Use the simplified canGlassBeEdited function
   const canEditGlass = (glass) => {
     const { canEdit } = canGlassBeEdited(glass, teamName);
     return canEdit;
@@ -242,7 +240,7 @@ const OrderTable = ({
 
   return (
     <div className="space-y-4">
-      {/* Desktop view */}
+
       <div className="hidden xl:block">
         <div className={`bg-gradient-to-r ${colors.header} rounded-lg shadow-md py-3 px-4 mb-3`}>
           <div className={`grid ${orderType === 'ready_to_dispatch' ? 'grid-cols-25' : 'grid-cols-25'} gap-1 text-white font-semibold text-xs items-center`}>
@@ -470,7 +468,6 @@ const OrderTable = ({
         })}
       </div>
 
-      {/* Mobile view - also updated team check */}
       <div className="xl:hidden space-y-4">
         {currentOrders.map((order) => (
           <div

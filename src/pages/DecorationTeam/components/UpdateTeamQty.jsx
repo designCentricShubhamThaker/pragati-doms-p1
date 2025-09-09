@@ -14,14 +14,14 @@ const UpdateTeamQty = ({ isOpen, onClose, orderData, itemData, onUpdate, teamNam
   useEffect(() => {
     if (isOpen && itemData?.components) {
       const bottleAssignments = itemData.components
-        .filter(component => 
-          component.component_type === "glass" && 
+        .filter(component =>
+          component.component_type === "glass" &&
           component.decorations?.[teamName]
         )
         .map(bottle => {
           // UPDATED: Use simplified validation
           const { canEdit, reason } = canGlassBeEdited(bottle, teamName);
-          
+
           return {
             ...bottle,
             // Use team-specific decoration data
@@ -47,91 +47,67 @@ const UpdateTeamQty = ({ isOpen, onClose, orderData, itemData, onUpdate, teamNam
     }
   }, [isOpen, itemData, teamName]);
 
+
+
+  // OPTIONAL: Add a simpler version that doesn't wait for confirmations
   const handleSave = async () => {
     try {
       setLoading(true);
       setError(null);
 
-      // Only process editable glasses with quantity > 0
       const updates = assignments
-        .filter(assignment => {
-          const qty = parseInt(assignment.todayQty) || 0;
-          return qty > 0 && assignment.canEdit;
-        })
-        .map(assignment => ({
-          component_id: assignment.component_id,
-          quantity_produced: parseInt(assignment.todayQty) || 0,
+        .filter(a => parseInt(a.todayQty) > 0 && a.canEdit)
+        .map(a => ({
+          component_id: a.component_id,
+          quantity_produced: parseInt(a.todayQty),
           username: `${teamName}_admin`,
-          notes: assignment.notes || 'Production update',
+          notes: a.notes || "Production update",
           date: new Date().toISOString()
         }));
 
       if (updates.length === 0) {
-        setError('Please enter quantity for at least one editable glass');
+        setError(`Please enter quantity for at least one ${teamName} item`);
         setLoading(false);
         return;
       }
 
-      // Process each update
-      let successCount = 0;
-      let errorMessages = [];
+      console.log("📤 Emitting updates (async mode):", updates);
 
-      for (let update of updates) {
-        try {
-          const payload = {
-            team: teamName,
-            order_number: orderData.order_number,
-            item_id: itemData?.item_id,
-            component_id: update.component_id,
-            updateData: {
-              date: update.date,
-              username: update.username,
-              quantity_produced: update.quantity_produced,
-              notes: update.notes
-            }
-          };
+      // Emit all updates without waiting for individual confirmations
+      updates.forEach(update => {
+        const payload = {
+          team: teamName,
+          order_number: orderData.order_number,
+          item_id: itemData?.item_id,
+          component_id: update.component_id,
+          updateData: {
+            date: update.date,
+            username: update.username,
+            quantity_produced: update.quantity_produced,
+            notes: update.notes
+          }
+        };
 
-          // Emit update
-          socket.emit("updateDecorationProduction", payload);
+        socket.emit("updateDecorationProduction", payload);
+      });
 
-          // Wait for response with timeout
-          await new Promise((resolve, reject) => {
-            const timeout = setTimeout(() => {
-              reject(new Error('Update timeout'));
-            }, 10000);
-
-            socket.once(`${teamName}ProductionUpdatedSelf`, ({ order_number, item_id, component_id, updatedComponent }) => {
-              clearTimeout(timeout);
-              console.log(`✅ ${teamName} production updated:`, order_number, item_id, component_id);
-              onUpdate(order_number, item_id, component_id, updatedComponent, updatedComponent?.decorations?.[teamName]?.status);
-              successCount++;
-              resolve();
-            });
-
-            socket.once(`${teamName}ProductionError`, (error) => {
-              clearTimeout(timeout);
-              console.error(`❌ ${teamName} update failed:`, error);
-              errorMessages.push(error || 'Update failed');
-              reject(new Error(error || 'Update failed'));
-            });
-          });
-
-        } catch (updateError) {
-          console.error(`❌ Error updating component ${update.component_id}:`, updateError);
-          errorMessages.push(`Failed to update component ${update.component_id}`);
+      // Set up a single listener for all updates
+      const handleGlobalSuccess = ({ team, order_number, item_id, component_id, updatedComponent }) => {
+        if (team === teamName && order_number === orderData.order_number) {
+          console.log(`✅ ${teamName} component updated:`, component_id);
+          onUpdate(order_number, item_id, component_id, updatedComponent, updatedComponent?.decorations?.[teamName]?.status);
         }
-      }
+      };
 
-      if (successCount > 0) {
-        setSuccessMessage(`Successfully updated ${successCount} glass(es)!`);
-        setTimeout(() => {
-          onClose();
-        }, 1500);
-      }
+      socket.on("decorationProductionUpdatedSelf", handleGlobalSuccess);
 
-      if (errorMessages.length > 0) {
-        setError(`Some updates failed: ${errorMessages.join(', ')}`);
-      }
+      // Clean up listener after component unmounts or modal closes
+      setTimeout(() => {
+        socket.off("decorationProductionUpdatedSelf", handleGlobalSuccess);
+      }, 30000); // 30 second cleanup
+
+      setSuccessMessage("Updates submitted successfully!");
+      setTimeout(() => onClose(), 1500);
 
     } catch (err) {
       console.error("Error updating quantities:", err);
@@ -141,9 +117,11 @@ const UpdateTeamQty = ({ isOpen, onClose, orderData, itemData, onUpdate, teamNam
     }
   };
 
+
+
   const handleQuantityChange = (assignmentIndex, value) => {
     const assignment = assignments[assignmentIndex];
-    
+
     // Prevent changes to disabled glasses
     if (assignment.isDisabled) {
       return;
@@ -159,7 +137,7 @@ const UpdateTeamQty = ({ isOpen, onClose, orderData, itemData, onUpdate, teamNam
 
   const handleNotesChange = (assignmentIndex, value) => {
     const assignment = assignments[assignmentIndex];
-    
+
     // Prevent changes to disabled glasses
     if (assignment.isDisabled) {
       return;
@@ -276,7 +254,7 @@ const UpdateTeamQty = ({ isOpen, onClose, orderData, itemData, onUpdate, teamNam
   const editableCount = assignments.filter(a => a.canEdit).length;
   const totalCount = assignments.length;
   const hasDisabledGlasses = totalCount > editableCount;
-  
+
   // Count glasses with valid quantities to update
   const updatableCount = assignments.filter(a => a.canEdit && (parseInt(a.todayQty) || 0) > 0).length;
 
@@ -293,18 +271,18 @@ const UpdateTeamQty = ({ isOpen, onClose, orderData, itemData, onUpdate, teamNam
                 <DialogTitle as="h2" className="text-lg sm:text-xl font-bold">
                   Update {teamConfig.name} Production
                 </DialogTitle>
-                <p className={`${teamConfig.color === 'yellow' ? 'text-yellow-100' : 
-                  teamConfig.color === 'blue' ? 'text-blue-100' : 
-                  teamConfig.color === 'purple' ? 'text-purple-100' : 'text-orange-100'} text-xs sm:text-sm mt-1 truncate`}>
+                <p className={`${teamConfig.color === 'yellow' ? 'text-yellow-100' :
+                  teamConfig.color === 'blue' ? 'text-blue-100' :
+                    teamConfig.color === 'purple' ? 'text-purple-100' : 'text-orange-100'} text-xs sm:text-sm mt-1 truncate`}>
                   Order #{orderData?.order_number} - {itemData?.item_name}
                 </p>
                 {/* Show status summary */}
                 {hasDisabledGlasses && (
                   <div className="flex items-center gap-1 mt-1">
                     <AlertCircle size={14} className="text-white" />
-                    <p className={`${teamConfig.color === 'yellow' ? 'text-yellow-100' : 
-                      teamConfig.color === 'blue' ? 'text-blue-100' : 
-                      teamConfig.color === 'purple' ? 'text-purple-100' : 'text-orange-100'} text-xs`}>
+                    <p className={`${teamConfig.color === 'yellow' ? 'text-yellow-100' :
+                      teamConfig.color === 'blue' ? 'text-blue-100' :
+                        teamConfig.color === 'purple' ? 'text-purple-100' : 'text-orange-100'} text-xs`}>
                       {editableCount} of {totalCount} glasses ready to edit
                     </p>
                   </div>
@@ -395,8 +373,8 @@ const UpdateTeamQty = ({ isOpen, onClose, orderData, itemData, onUpdate, teamNam
                           </div>
 
                           <div className="px-2">
-                            <ProgressBar 
-                              assignment={assignment} 
+                            <ProgressBar
+                              assignment={assignment}
                               todayQty={assignment.todayQty || 0}
                             />
                             <div className={`text-xs ${assignment.isDisabled ? 'text-gray-400' : 'text-gray-500'} mt-1 text-center`}>
@@ -413,11 +391,10 @@ const UpdateTeamQty = ({ isOpen, onClose, orderData, itemData, onUpdate, teamNam
                                 value={assignment.todayQty || ''}
                                 onChange={(e) => handleQuantityChange(index, e.target.value)}
                                 disabled={assignment.isDisabled}
-                                className={`w-full px-2 py-1 text-sm border rounded focus:outline-none focus:ring-2 focus:border-transparent ${
-                                  assignment.isDisabled 
-                                    ? 'border-gray-300 bg-gray-100 text-gray-500 cursor-not-allowed' 
+                                className={`w-full px-2 py-1 text-sm border rounded focus:outline-none focus:ring-2 focus:border-transparent ${assignment.isDisabled
+                                    ? 'border-gray-300 bg-gray-100 text-gray-500 cursor-not-allowed'
                                     : 'border-gray-300 focus:ring-orange-500'
-                                }`}
+                                  }`}
                                 placeholder={assignment.isDisabled ? "Cannot edit" : "Quantity"}
                                 title={assignment.isDisabled ? assignment.editReason : "Enter quantity to update"}
                               />
@@ -426,16 +403,15 @@ const UpdateTeamQty = ({ isOpen, onClose, orderData, itemData, onUpdate, teamNam
                                 value={assignment.notes}
                                 onChange={(e) => handleNotesChange(index, e.target.value)}
                                 disabled={assignment.isDisabled}
-                                className={`w-full px-2 py-1 text-xs border rounded focus:outline-none focus:ring-2 focus:border-transparent ${
-                                  assignment.isDisabled 
-                                    ? 'border-gray-300 bg-gray-100 text-gray-500 cursor-not-allowed' 
+                                className={`w-full px-2 py-1 text-xs border rounded focus:outline-none focus:ring-2 focus:border-transparent ${assignment.isDisabled
+                                    ? 'border-gray-300 bg-gray-100 text-gray-500 cursor-not-allowed'
                                     : 'border-gray-300 focus:ring-orange-500'
-                                }`}
+                                  }`}
                                 placeholder={assignment.isDisabled ? "Cannot edit" : "Notes (optional)"}
                                 title={assignment.isDisabled ? assignment.editReason : "Add notes"}
                               />
                             </div>
-                            
+
                             {/* Show reason why glass cannot be edited */}
                             {assignment.isDisabled && (
                               <div className="text-xs text-red-600 mt-1 px-2 py-1 bg-red-50 rounded border border-red-200">
@@ -494,8 +470,8 @@ const UpdateTeamQty = ({ isOpen, onClose, orderData, itemData, onUpdate, teamNam
                                 {assignment.teamCompleted} / {assignment.teamQty}
                               </span>
                             </div>
-                            <ProgressBar 
-                              assignment={assignment} 
+                            <ProgressBar
+                              assignment={assignment}
                               todayQty={assignment.todayQty || 0}
                             />
                           </div>
@@ -510,11 +486,10 @@ const UpdateTeamQty = ({ isOpen, onClose, orderData, itemData, onUpdate, teamNam
                                 value={assignment.todayQty || ''}
                                 onChange={(e) => handleQuantityChange(index, e.target.value)}
                                 disabled={assignment.isDisabled}
-                                className={`w-full px-3 py-2 text-sm border rounded focus:outline-none focus:ring-2 focus:border-transparent ${
-                                  assignment.isDisabled 
-                                    ? 'border-gray-300 bg-gray-100 text-gray-500 cursor-not-allowed' 
+                                className={`w-full px-3 py-2 text-sm border rounded focus:outline-none focus:ring-2 focus:border-transparent ${assignment.isDisabled
+                                    ? 'border-gray-300 bg-gray-100 text-gray-500 cursor-not-allowed'
                                     : 'border-gray-300 focus:ring-orange-500'
-                                }`}
+                                  }`}
                                 placeholder={assignment.isDisabled ? "Cannot edit" : "Enter quantity"}
                                 title={assignment.isDisabled ? assignment.editReason : "Enter quantity to update"}
                               />
@@ -526,16 +501,15 @@ const UpdateTeamQty = ({ isOpen, onClose, orderData, itemData, onUpdate, teamNam
                                 value={assignment.notes}
                                 onChange={(e) => handleNotesChange(index, e.target.value)}
                                 disabled={assignment.isDisabled}
-                                className={`w-full px-3 py-2 text-sm border rounded focus:outline-none focus:ring-2 focus:border-transparent ${
-                                  assignment.isDisabled 
-                                    ? 'border-gray-300 bg-gray-100 text-gray-500 cursor-not-allowed' 
+                                className={`w-full px-3 py-2 text-sm border rounded focus:outline-none focus:ring-2 focus:border-transparent ${assignment.isDisabled
+                                    ? 'border-gray-300 bg-gray-100 text-gray-500 cursor-not-allowed'
                                     : 'border-gray-300 focus:ring-orange-500'
-                                }`}
+                                  }`}
                                 placeholder={assignment.isDisabled ? "Cannot edit" : "Add notes..."}
                                 title={assignment.isDisabled ? assignment.editReason : "Add production notes"}
                               />
                             </div>
-                            
+
                             {/* Show reason why glass cannot be edited */}
                             {assignment.isDisabled && (
                               <div className="text-xs text-red-600 px-3 py-2 bg-red-50 rounded border border-red-200">

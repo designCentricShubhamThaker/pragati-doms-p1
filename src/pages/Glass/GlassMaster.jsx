@@ -7,8 +7,8 @@ import AddGlassProductMaster from './components/AddGlassProductMaster';
 import EditGlassMaster from './components/EditGlassMaster';
 import { getSocket } from '../../context/SocketContext';
 
-const GlassMaster = ({ allProducts, loading,
-  error, setAllProducts, filterLoading }) => {
+const GlassMaster = ({  loading,
+  globalState,error, setAllProducts, filterLoading }) => {
   const [showFilters, setShowFilters] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
   const [openDropdown, setOpenDropdown] = useState(null);
@@ -17,6 +17,8 @@ const GlassMaster = ({ allProducts, loading,
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(50);
   const socket = getSocket();
+  const {allProducts} = globalState
+
   const [filters, setFilters] = useState({
     search: '',
     categories: [],
@@ -168,8 +170,13 @@ const GlassMaster = ({ allProducts, loading,
     }
   };
 
-  const handleProductAdded = async () => {
-    await fetchAllProducts();
+   const handleProductAdded = async (product) => {
+    let updated = allProducts.some((p) => p.data_code === product.data_code)
+      ? allProducts.map((p) => (p.data_code === product.data_code ? { ...p, ...product } : p))
+      : [...allProducts, product];
+
+    localStorage.setItem('glassMaster', JSON.stringify(updated));
+    setAllProducts(updated);
   };
 
   const getPageNumbers = () => {
@@ -217,24 +224,14 @@ const GlassMaster = ({ allProducts, loading,
     setShowEditModal(true);
   };
 
-  const handleDelete = (productId) => {
-    if (!window.confirm('Are you sure you want to delete this product?')) return;
-
-    console.log('Requesting delete via socket for:', productId);
+ const handleDelete = (productId) => {
+    if (!window.confirm('Delete this product?')) return;
 
     socket.emit('deleteGlass', { productId });
-
-    socket.once('glassDeletedSelf', (deletedProductId) => {
-      if (deletedProductId === productId) {
-        alert('Product deleted successfully');
-        setAllProducts(prev => prev.filter(p => p._id !== productId));
-      }
+    socket.once('glassDeletedSelf', (id) => {
+      if (id === productId) setAllProducts((prev) => prev.filter((p) => p.data_code !== id));
     });
-
-    socket.once('glassDeleteError', (error) => {
-      console.error('Delete error via socket:', error);
-      alert(error || 'Error deleting product');
-    });
+    socket.once('glassDeleteError', (err) => alert(err || 'Error deleting product'));
   };
 
 
@@ -545,7 +542,7 @@ const GlassMaster = ({ allProducts, loading,
                         </td>
                         <td className="px-3 py-2">
                           <button
-                            onClick={() => handleDelete(product._id)}
+                            onClick={() => handleDelete(product.data_code)}
                             className="p-1 text-red-600 hover:text-red-800 hover:bg-red-50 rounded transition-colors"
                             title="Delete product"
                           >

@@ -1,6 +1,7 @@
 import React from 'react';
 import { Menu, ChevronLeft } from 'lucide-react';
 import { FaPowerOff } from "react-icons/fa";
+import NotificationPanel from '../pages/DecorationTeam/components/NotificationPanel';
 
 const SharedHeader = ({ 
   showGradient = true, 
@@ -12,7 +13,10 @@ const SharedHeader = ({
   setMobileMenuOpen,
   handleLogout,
   formatTime,
-  formatTimeMobile
+  formatTimeMobile,
+  notificationPanelRef,  // new
+  teamName,              // new
+  teamConfig 
 }) => {
   
   const headerClasses = showGradient 
@@ -60,6 +64,14 @@ const SharedHeader = ({
                 <FaPowerOff />
               </button>
             </div>
+
+            {teamName && teamConfig && (
+            <NotificationPanel
+              ref={notificationPanelRef}
+              teamName={teamName}
+              teamConfig={teamConfig}
+            />
+          )}
           </div>
         </div>
       </div>

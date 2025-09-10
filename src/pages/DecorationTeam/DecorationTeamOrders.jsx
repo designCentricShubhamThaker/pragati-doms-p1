@@ -56,12 +56,7 @@ const DecorationTeamOrders = ({
     );
   }, [teamName]);
 
-  // ✅ FIXED: Added missing functions that were causing aggregation to fail
-  const getAvailableStock = useCallback((component) => {
-    // Decoration teams don't have stock - return 'N/A' or 0
-    return 'N/A';
-  }, []);
-
+ 
   const getRemainingQty = useCallback((component) => {
     const teamDecoration = component?.decorations?.[teamName];
     if (!teamDecoration || !teamDecoration.qty) return 'N/A';
@@ -74,17 +69,14 @@ const DecorationTeamOrders = ({
     return Math.max(0, totalQuantity - completedQty);
   }, [teamName, dataVersion]);
 
-  // ✅ FIXED: Corrected the aggregation logic for decoration teams
   const aggregatedItems = useMemo(() => {
     if (currentOrders.length === 0) {
       return {};
     }
-
     const itemMap = {};
-
     currentOrders.forEach(order => {
       order.items?.forEach(item => {
-        // Filter components that have decoration for this team
+
         const teamComponents = item.components?.filter(c => 
           c.component_type === "glass" && hasDecorationForTeam(c, teamName)
         ) || [];
@@ -94,10 +86,10 @@ const DecorationTeamOrders = ({
           if (key) {
             if (!itemMap[key]) {
               itemMap[key] = {
-                glass_name: component.name, // Keep consistent with glass team naming
+                glass_name: component.name, 
                 total_quantity: 0,
                 total_remaining: 0,
-                available_stock: 'N/A', // Decoration teams don't track stock
+                available_stock: 'N/A',
                 capacity: component.capacity,
                 weight: component.weight,
                 neck_diameter: component.neck_diameter,

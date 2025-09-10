@@ -104,6 +104,7 @@ export const canTeamMarkVehiclesDelivered = (component, teamName) => {
   return isFirstTeamInSequence(component, teamName);
 };
 
+// UPDATED: Always allow opening the modal, but provide details about editable glasses
 export const canItemBeEdited = (item, team) => {
   if (!item?.components) {
     return { canEdit: false, reason: 'No components found' };
@@ -123,19 +124,13 @@ export const canItemBeEdited = (item, team) => {
     return canEdit;
   });
 
-  if (editableGlasses.length > 0) {
-    return { 
-      canEdit: true, 
-      reason: `${editableGlasses.length} of ${teamGlasses.length} glasses ready`,
-      editableCount: editableGlasses.length,
-      totalCount: teamGlasses.length
-    };
-  }
-
+  // CHANGED: Always allow opening the modal if there are team glasses
   return { 
-    canEdit: false, 
-    reason: 'No glasses ready to edit',
-    editableCount: 0,
+    canEdit: true, // Always true if there are team glasses
+    reason: editableGlasses.length > 0 
+      ? `${editableGlasses.length} of ${teamGlasses.length} glasses ready`
+      : `0 of ${teamGlasses.length} glasses ready - individual restrictions apply`,
+    editableCount: editableGlasses.length,
     totalCount: teamGlasses.length
   };
 };

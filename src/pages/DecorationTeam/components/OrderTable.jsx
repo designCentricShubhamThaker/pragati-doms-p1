@@ -243,7 +243,7 @@ const renderTeamCheck = (glass) => {
 
       <div className="hidden xl:block">
         <div className={`bg-gradient-to-r ${colors.header} rounded-lg shadow-md py-3 px-4 mb-3`}>
-          <div className={`grid ${orderType === 'ready_to_dispatch' ? 'grid-cols-25' : 'grid-cols-25'} gap-1 text-white font-semibold text-xs items-center`}>
+          <div className={`grid ${orderType === 'ready_to_dispatch' ? 'grid-cols-23' : 'grid-cols-25'} gap-1 text-white font-semibold text-xs items-center`}>
             <div className="text-left col-span-2">Order #</div>
             <div className="text-left col-span-2">Manager</div>
             <div className="text-left col-span-2">Customer</div>
@@ -308,7 +308,7 @@ const renderTeamCheck = (glass) => {
                   return (
                     <div
                       key={`${order.order_number}-${item.item_name}-${glass.component_id}-${teamName}`}
-                      className={`grid ${orderType === 'ready_to_dispatch' ? 'grid-cols-25' : 'grid-cols-25'} gap-1 items-center py-2 px-3 text-xs ${bgColor}`}
+                      className={`grid ${orderType === 'ready_to_dispatch' ? 'grid-cols-23' : 'grid-cols-25'} gap-1 items-center py-2 px-3 text-xs ${bgColor}`}
                     >
                       <div className="text-left col-span-2">
                         {isFirstRowOfOrder ? (

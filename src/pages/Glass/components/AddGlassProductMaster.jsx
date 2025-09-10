@@ -70,43 +70,7 @@ const socket= getSocket()
     return Object.keys(newErrors).length === 0;
   };
 
-  // const handleSubmit = async (e) => {
-  //   e.preventDefault();
-  //   if (!validateForm()) return;
 
-  //   setLoading(true);
-  //   setErrors({});
-
-  //   try {
-  //     const submitData = {
-  //       ...formData,
-  //       weight: Number(formData.weight),
-  //       capacity: Number(formData.capacity),
-  //       neck_diameter: Number(formData.neck_diameter),
-  //       mould_set: formData.mould_set ? Number(formData.mould_set) : 0
-  //     };
-
-  //     const { data } = await axios.post(
-  //       'https://doms-k1fi.onrender.com/api/masters/glass',
-  //       submitData
-  //     );
-
-  //     if (data.success) {
-  //       setSuccessMessage('Product added successfully!');
-  //       setTimeout(() => {
-  //         onProductAdded && onProductAdded();
-  //         handleClose();
-  //       }, 1500);
-  //     } else {
-  //       setErrors({ submit: data.message || 'Failed to add product' });
-  //     }
-  //   } catch (error) {
-  //     console.error('Error adding product:', error);
-  //     setErrors({ submit: 'Network error. Please try again.' });
-  //   } finally {
-  //     setLoading(false);
-  //   }
-  // };
 
 
     const handleSubmit = async (e) => {

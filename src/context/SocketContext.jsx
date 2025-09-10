@@ -1,4 +1,3 @@
-// context/SocketContext.jsx
 import React, { createContext, useContext, useEffect, useState } from "react";
 import io from "socket.io-client";
 
@@ -11,35 +10,22 @@ export const SocketProvider = ({ children }) => {
 
   useEffect(() => {
     const newSocket = io("http://localhost:5000", {
-      reconnection: true,            // enable auto-reconnect
-      reconnectionAttempts: Infinity, // retry forever
-      reconnectionDelay: 2000,       // 2s start
-      reconnectionDelayMax: 10000,   // cap at 10s
-      timeout: 20000,                // connection timeout
-      transports: ["websocket", "polling"],
+      transports: ['websocket', 'polling'],
+      timeout: 45000,
+      reconnection: true,
+      reconnectionAttempts: 5,
+      reconnectionDelay: 2000,
+      allowEIO3: true
     });
 
     setSocket(newSocket);
 
-    // Lifecycle logs (optional but useful for debugging)
     newSocket.on("connect", () => {
       console.log("✅ Socket connected:", newSocket.id);
     });
 
     newSocket.on("disconnect", (reason) => {
-      console.warn("⚠️ Socket disconnected:", reason);
-    });
-
-    newSocket.io.on("reconnect_attempt", (attempt) => {
-      console.log(`🔄 Reconnecting attempt ${attempt}...`);
-    });
-
-    newSocket.io.on("reconnect", (attempt) => {
-      console.log(`✅ Reconnected after ${attempt} attempts`);
-    });
-
-    newSocket.io.on("reconnect_failed", () => {
-      console.error("❌ Reconnection failed. Still retrying...");
+      console.log("⚠️ Socket disconnected:", reason);
     });
 
     newSocket.on("connect_error", (err) => {
@@ -47,7 +33,7 @@ export const SocketProvider = ({ children }) => {
     });
 
     return () => {
-      newSocket.disconnect();
+      newSocket.close();
     };
   }, []);
 

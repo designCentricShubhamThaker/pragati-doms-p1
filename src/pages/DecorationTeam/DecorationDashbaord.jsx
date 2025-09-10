@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useLocation } from 'react-router-dom';
 import { Menu, ChevronLeft } from 'lucide-react';
 import { FaPowerOff } from "react-icons/fa";
@@ -43,6 +43,14 @@ const DecorationDashbaord = ({ isEmbedded = false }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { currentDateTime, formatTime, formatTimeMobile } = useCurrentDateTime();
   const socket = getSocket();
+  const notificationPanelRef = useRef();
+
+  // ADD: Helper to add notifications from socket events
+  const addNotification = useCallback((type, data) => {
+    if (notificationPanelRef.current?.addNotification) {
+      notificationPanelRef.current.addNotification(type, data);
+    }
+  }, []);
 
   // Extract team from URL path
   const teamName = location.pathname.substring(1); // Remove leading slash
@@ -70,19 +78,19 @@ const DecorationDashbaord = ({ isEmbedded = false }) => {
 
 
 
-const handleOrderUpdate = useCallback((orderNumber, itemId, componentId, updatedComponent, newStatus, itemChanges = {}, orderChanges = {}) => {
-  // Batch all updates into a single state change
-  setGlobalState(prev => {
-    const orderIndex = prev.orders.findIndex(order => order.order_number === orderNumber);
-    if (orderIndex === -1) return prev;
+  const handleOrderUpdate = useCallback((orderNumber, itemId, componentId, updatedComponent, newStatus, itemChanges = {}, orderChanges = {}) => {
+    // Batch all updates into a single state change
+    setGlobalState(prev => {
+      const orderIndex = prev.orders.findIndex(order => order.order_number === orderNumber);
+      if (orderIndex === -1) return prev;
 
-    const newOrders = [...prev.orders];
-    newOrders[orderIndex] = {
-      ...newOrders[orderIndex],
-      status: orderChanges?.new_status || newOrders[orderIndex].status,
-      items: newOrders[orderIndex].items.map(item =>
-        item.item_id === itemId
-          ? {
+      const newOrders = [...prev.orders];
+      newOrders[orderIndex] = {
+        ...newOrders[orderIndex],
+        status: orderChanges?.new_status || newOrders[orderIndex].status,
+        items: newOrders[orderIndex].items.map(item =>
+          item.item_id === itemId
+            ? {
               ...item,
               status: itemChanges?.new_status || item.status,
               components: item.components.map(c =>
@@ -91,21 +99,21 @@ const handleOrderUpdate = useCallback((orderNumber, itemId, componentId, updated
                   : c
               )
             }
-          : item
-      )
-    };
+            : item
+        )
+      };
 
-    // Update localStorage once
-    updateOrderInLocalStorage(teamName, newOrders[orderIndex]);
+      // Update localStorage once
+      updateOrderInLocalStorage(teamName, newOrders[orderIndex]);
 
-    return {
-      ...prev,
-      orders: newOrders,
-      dataVersion: prev.dataVersion + 1,
-      refreshOrders: prev.refreshOrders + 1
-    };
-  });
-}, [teamName]);
+      return {
+        ...prev,
+        orders: newOrders,
+        dataVersion: prev.dataVersion + 1,
+        refreshOrders: prev.refreshOrders + 1
+      };
+    });
+  }, [teamName]);
 
   const handleOrdersUpdate = useCallback((newOrders) => {
     setGlobalState(prev => ({
@@ -119,19 +127,13 @@ const handleOrderUpdate = useCallback((orderNumber, itemId, componentId, updated
   useEffect(() => {
     if (!socket || !teamConfig) return;
 
-    console.log(`🔌 [${teamName}] Setting up socket listeners for production room`);
-
-    // Join single production room
     socket.emit("joinProduction");
-    
 
     socket.on("joinedProduction", ({ message }) => {
       console.log(`✅ [${teamName}] Production room joined:`, message);
     });
 
-    
 
-    // Filter decoration production updates by team
     const handleDecorationProductionUpdated = ({ team, order_number, item_id, component_id, updatedComponent }) => {
       if (team !== teamName) return;
 
@@ -140,221 +142,192 @@ const handleOrderUpdate = useCallback((orderNumber, itemId, componentId, updated
     };
 
 
-
- const handleDecorationComponentDispatched = ({
-  team,
-  order_number,
-  item_id,
-  component_id,
-  updatedComponent,
-  itemChanges,
-  orderChanges,
-  timestamp
-}) => {
-  console.log(`📦 [${teamName}] Dispatch update received:`, {
-    order_number,
-    item_id,
-    component_id,
-    dispatched_team: team,
-    decorations: updatedComponent?.decorations,
-    deco_sequence: updatedComponent?.deco_sequence // Log this specifically
-  });
-
-  // IMPROVED: Better validation
-  if (!updatedComponent) {
-    console.log(`⚠️ [${teamName}] No updatedComponent in dispatch update, ignoring`);
-    return;
-  }
-
-  // IMPROVED: More robust sequence validation
-  const decoSequence = updatedComponent.deco_sequence;
-  if (!decoSequence || typeof decoSequence !== 'string') {
-    console.warn(`⚠️ [${teamName}] No valid deco_sequence in dispatch update:`, {
-      deco_sequence: decoSequence,
-      type: typeof decoSequence,
-      component_id,
-      dispatched_team: team
-    });
-    
-    // OPTION: Still process if this team is involved, but log the issue
-    console.log(`⚠️ [${teamName}] Processing anyway due to missing sequence data`);
-    
-    // Process without sequence validation for now
-    const enhancedUpdatedComponent = {
-      ...updatedComponent,
-      last_updated: timestamp || new Date().toISOString(),
-      sequence_last_dispatch: {
-        team: team,
-        at: timestamp || new Date().toISOString()
-      }
-    };
-
-    handleOrderUpdate(
+    const handleDecorationComponentDispatched = ({
+      team,
       order_number,
       item_id,
       component_id,
-      enhancedUpdatedComponent,
-      enhancedUpdatedComponent?.status,
+      updatedComponent,
       itemChanges,
-      orderChanges
-    );
-    return;
-  }
+      orderChanges,
+      timestamp
+    }) => {
 
-  // Parse sequence
-  const sequence = decoSequence.split('_').filter(Boolean);
-  const isInSequence = sequence.includes(teamName);
-
-  if (!isInSequence) {
-    console.log(`❌ [${teamName}] Not in sequence [${sequence.join(' → ')}], ignoring dispatch update from ${team}`);
-    return;
-  }
-
-  console.log(`✅ [${teamName}] Processing dispatch update - ${team} completed in sequence [${sequence.join(' → ')}]`);
-
-  // Get current component from localStorage to merge data
-  const STORAGE_KEY = getStorageKey(teamName);
-  let allOrders = getLocalStorageData(STORAGE_KEY) || [];
-
-  const currentOrder = allOrders.find(order => order.order_number === order_number);
-  if (!currentOrder) {
-    console.warn(`⚠️ [${teamName}] Order not found for dispatch update:`, order_number);
-    return;
-  }
-
-  const currentItem = currentOrder.items?.find(item => item.item_id === item_id);
-  if (!currentItem) {
-    console.warn(`⚠️ [${teamName}] Item not found for dispatch update:`, item_id);
-    return;
-  }
-
-  const currentComponent = currentItem.components?.find(c => c.component_id === component_id);
-  if (!currentComponent) {
-    console.warn(`⚠️ [${teamName}] Component not found for dispatch update:`, component_id);
-    return;
-  }
-
-  // IMPROVED: Better merging of server data with local data
-  const enhancedUpdatedComponent = {
-    ...currentComponent, // Preserve all existing component data
-    ...updatedComponent, // Apply server updates
-    decorations: {
-      ...currentComponent.decorations, // Keep existing team decorations
-      ...(updatedComponent.decorations || {}), // Apply server decoration updates
-    },
-    deco_sequence: decoSequence, // Ensure sequence is preserved
-    last_updated: timestamp || new Date().toISOString(),
-    sequence_last_dispatch: {
-      team: team,
-      at: timestamp || new Date().toISOString()
-    }
-  };
-
-  console.log(`🔄 [${teamName}] Enhanced component decorations:`, {
-    team_dispatched: team,
-    decorations: enhancedUpdatedComponent.decorations,
-    sequence: sequence
-  });
-
-  // Update the component to trigger UI refresh for all teams in sequence
-  handleOrderUpdate(
-    order_number,
-    item_id,
-    component_id,
-    enhancedUpdatedComponent,
-    enhancedUpdatedComponent?.status,
-    itemChanges,
-    orderChanges
-  );
-};
-
-// FIXED: More robust team notification handler
-const handleTeamCanStartWork = ({
-  order_number,
-  item_id,
-  component_id,
-  team,
-  deco_sequence,
-  previous_team,
-  timestamp
-}) => {
-  console.log(`🚀 [${teamName}] Team notification received:`, {
-    order_number,
-    component_id,
-    notified_team: team,
-    previous_team_completed: previous_team,
-    current_team: teamName,
-    sequence: deco_sequence
-  });
-
-  // Parse and validate sequence
-  if (!deco_sequence || typeof deco_sequence !== 'string') {
-    console.log(`⚠️ [${teamName}] No valid deco_sequence in team notification, ignoring`);
-    return;
-  }
-
-  const sequence = deco_sequence.split('_').filter(Boolean);
-  const isInSequence = sequence.includes(teamName);
-
-  if (!isInSequence) {
-    console.log(`❌ [${teamName}] Not in sequence [${sequence.join(' → ')}] for team notification, ignoring`);
-    return;
-  }
-
-  // FIXED: Only process if this notification is for the current team
-  if (team !== teamName) {
-    console.log(`ℹ️ [${teamName}] Team notification is for ${team}, not ${teamName}, but updating previous team status`);
-  }
-
-  console.log(`✅ [${teamName}] Processing team notification - ${previous_team} completed, affecting sequence [${sequence.join(' → ')}]`);
-
-  // Get current component to preserve decoration data
-  const STORAGE_KEY = getStorageKey(teamName);
-  let allOrders = getLocalStorageData(STORAGE_KEY) || [];
-
-  const currentOrder = allOrders.find(order => order.order_number === order_number);
-  if (!currentOrder) {
-    console.warn(`⚠️ [${teamName}] Order not found for team notification:`, order_number);
-    return;
-  }
-
-  const currentItem = currentOrder.items?.find(item => item.item_id === item_id);
-  if (!currentItem) {
-    console.warn(`⚠️ [${teamName}] Item not found for team notification:`, item_id);
-    return;
-  }
-
-  const currentComponent = currentItem.components?.find(c => c.component_id === component_id);
-  if (!currentComponent) {
-    console.warn(`⚠️ [${teamName}] Component not found for team notification:`, component_id);
-    return;
-  }
-
-  // Update component with team notification info
-  const updatedComponent = {
-    ...currentComponent,
-    decorations: {
-      ...currentComponent.decorations,
-      // Ensure previous team is marked as DISPATCHED
-      [previous_team]: {
-        ...currentComponent.decorations?.[previous_team],
-        status: 'DISPATCHED',
-        dispatched_at: timestamp || new Date().toISOString()
+      if (!updatedComponent) {
+        console.log(`⚠️ [${teamName}] No updatedComponent in dispatch update, ignoring`);
+        return;
       }
-    },
-    deco_sequence: deco_sequence,
-    sequence_updated_at: timestamp || new Date().toISOString(),
-    last_completed_team: previous_team,
-    next_team_notified: team
-  };
 
-  console.log(`🔄 [${teamName}] Team notification - updated decorations:`, {
-    previous_team_status: updatedComponent.decorations[previous_team]?.status,
-    all_decorations: updatedComponent.decorations
-  });
+      const decoSequence = updatedComponent.deco_sequence;
+      if (!decoSequence || typeof decoSequence !== 'string') {
+        console.warn(`⚠️ [${teamName}] No valid deco_sequence in dispatch update:`, {
+          deco_sequence: decoSequence,
+          type: typeof decoSequence,
+          component_id,
+          dispatched_team: team
+        });
 
-  handleOrderUpdate(order_number, item_id, component_id, updatedComponent);
-};
+        const enhancedUpdatedComponent = {
+          ...updatedComponent,
+          last_updated: timestamp || new Date().toISOString(),
+          sequence_last_dispatch: {
+            team: team,
+            at: timestamp || new Date().toISOString()
+          }
+        };
+
+        handleOrderUpdate(
+          order_number,
+          item_id,
+          component_id,
+          enhancedUpdatedComponent,
+          enhancedUpdatedComponent?.status,
+          itemChanges,
+          orderChanges
+        );
+        return;
+      }
+
+      // Parse sequence
+      const sequence = decoSequence.split('_').filter(Boolean);
+      const isInSequence = sequence.includes(teamName);
+
+      if (!isInSequence) {
+        console.log(`❌ [${teamName}] Not in sequence [${sequence.join(' → ')}], ignoring dispatch update from ${team}`);
+        return;
+      }
+
+      console.log(`✅ [${teamName}] Processing dispatch update - ${team} completed in sequence [${sequence.join(' → ')}]`);
+
+      // Get current component from localStorage to merge data
+      const STORAGE_KEY = getStorageKey(teamName);
+      let allOrders = getLocalStorageData(STORAGE_KEY) || [];
+
+      const currentOrder = allOrders.find(order => order.order_number === order_number);
+      if (!currentOrder) {
+        console.warn(`⚠️ [${teamName}] Order not found for dispatch update:`, order_number);
+        return;
+      }
+
+      const currentItem = currentOrder.items?.find(item => item.item_id === item_id);
+      if (!currentItem) {
+        console.warn(`⚠️ [${teamName}] Item not found for dispatch update:`, item_id);
+        return;
+      }
+
+      const currentComponent = currentItem.components?.find(c => c.component_id === component_id);
+      if (!currentComponent) {
+        console.warn(`⚠️ [${teamName}] Component not found for dispatch update:`, component_id);
+        return;
+      }
+
+      // IMPROVED: Better merging of server data with local data
+      const enhancedUpdatedComponent = {
+        ...currentComponent, // Preserve all existing component data
+        ...updatedComponent, // Apply server updates
+        decorations: {
+          ...currentComponent.decorations, // Keep existing team decorations
+          ...(updatedComponent.decorations || {}), // Apply server decoration updates
+        },
+        deco_sequence: decoSequence, // Ensure sequence is preserved
+        last_updated: timestamp || new Date().toISOString(),
+        sequence_last_dispatch: {
+          team: team,
+          at: timestamp || new Date().toISOString()
+        }
+      };
+
+      handleOrderUpdate(
+        order_number,
+        item_id,
+        component_id,
+        enhancedUpdatedComponent,
+        enhancedUpdatedComponent?.status,
+        itemChanges,
+        orderChanges
+      );
+    };
+    const handleTeamCanStartWork = ({
+      order_number,
+      item_id,
+      component_id,
+      team,
+      deco_sequence,
+      previous_team,
+      timestamp
+    }) => {
+      console.log(`🚀 [${teamName}] Team notification received:`, {
+        order_number,
+        component_id,
+        notified_team: team,
+        previous_team_completed: previous_team,
+        current_team: teamName,
+        sequence: deco_sequence
+      });
+
+      // Parse and validate sequence
+      if (!deco_sequence || typeof deco_sequence !== 'string') {
+        console.log(`⚠️ [${teamName}] No valid deco_sequence in team notification, ignoring`);
+        return;
+      }
+
+      const sequence = deco_sequence.split('_').filter(Boolean);
+      const isInSequence = sequence.includes(teamName);
+
+      if (!isInSequence) {
+        console.log(`❌ [${teamName}] Not in sequence [${sequence.join(' → ')}] for team notification, ignoring`);
+        return;
+      }
+
+      // FIXED: Only process if this notification is for the current team
+      if (team !== teamName) {
+        console.log(`ℹ️ [${teamName}] Team notification is for ${team}, not ${teamName}, but updating previous team status`);
+      }
+
+      console.log(`✅ [${teamName}] Processing team notification - ${previous_team} completed, affecting sequence [${sequence.join(' → ')}]`);
+
+      // Get current component to preserve decoration data
+      const STORAGE_KEY = getStorageKey(teamName);
+      let allOrders = getLocalStorageData(STORAGE_KEY) || [];
+
+      const currentOrder = allOrders.find(order => order.order_number === order_number);
+      if (!currentOrder) {
+        console.warn(`⚠️ [${teamName}] Order not found for team notification:`, order_number);
+        return;
+      }
+
+      const currentItem = currentOrder.items?.find(item => item.item_id === item_id);
+      if (!currentItem) {
+        console.warn(`⚠️ [${teamName}] Item not found for team notification:`, item_id);
+        return;
+      }
+
+      const currentComponent = currentItem.components?.find(c => c.component_id === component_id);
+      if (!currentComponent) {
+        console.warn(`⚠️ [${teamName}] Component not found for team notification:`, component_id);
+        return;
+      }
+
+      // Update component with team notification info
+      const updatedComponent = {
+        ...currentComponent,
+        decorations: {
+          ...currentComponent.decorations,
+          // Ensure previous team is marked as DISPATCHED
+          [previous_team]: {
+            ...currentComponent.decorations?.[previous_team],
+            status: 'DISPATCHED',
+            dispatched_at: timestamp || new Date().toISOString()
+          }
+        },
+        deco_sequence: deco_sequence,
+        sequence_updated_at: timestamp || new Date().toISOString(),
+        last_completed_team: previous_team,
+        next_team_notified: team
+      };
+
+      handleOrderUpdate(order_number, item_id, component_id, updatedComponent);
+    };
 
     const handleVehicleDetailsReceived = ({
       order_number,
@@ -371,7 +344,6 @@ const handleTeamCanStartWork = ({
         deco_sequence
       });
 
-      // FIXED: Parse and validate sequence properly
       if (!deco_sequence || typeof deco_sequence !== 'string') {
         console.log(`⚠️ [${teamName}] No valid deco_sequence, ignoring vehicle details`);
         return;
@@ -385,9 +357,7 @@ const handleTeamCanStartWork = ({
         return;
       }
 
-      console.log(`✅ [${teamName}] Processing vehicle details for sequence [${sequence.join(' → ')}]`);
-
-      // All teams in sequence receive vehicle details
+    
       const updatedComponent = {
         vehicle_details: vehicle_details || [],
         deco_sequence: deco_sequence,
@@ -396,7 +366,7 @@ const handleTeamCanStartWork = ({
 
       handleOrderUpdate(order_number, item_id, component_id, updatedComponent);
     };
-    // FIXED: Vehicle marked as delivered - ALL teams in sequence receive this
+
     const handleVehicleMarkedDelivered = ({
       order_number,
       item_id,
@@ -413,7 +383,6 @@ const handleTeamCanStartWork = ({
         deco_sequence
       });
 
-      // Parse and validate sequence
       if (!deco_sequence || typeof deco_sequence !== 'string') {
         console.log(`⚠️ [${teamName}] No valid deco_sequence in delivery update, ignoring`);
         return;
@@ -427,7 +396,6 @@ const handleTeamCanStartWork = ({
         return;
       }
 
-      console.log(`✅ [${teamName}] Processing vehicle delivery update for sequence [${sequence.join(' → ')}]`);
 
       const updatedComponent = {
         vehicle_details: vehicle_details || [],
@@ -440,10 +408,6 @@ const handleTeamCanStartWork = ({
       // CRITICAL: Call handleOrderUpdate to trigger UI refresh
       handleOrderUpdate(order_number, item_id, component_id, updatedComponent);
     };
-
-    // 4. Fix in DecorationTeamOrders.jsx - Add forced refresh trigger
-
-
 
     const handleComponentDispatchedFromGlass = ({
       order_number,

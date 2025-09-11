@@ -71,18 +71,18 @@ const GlassOrders = ({
     return Math.max(0, remaining);
   }, []);
 
-  const glassLookupMap = useMemo(() => {
-    if (!glassMasterReady || allProducts.length === 0) {
-      return new Map();
-    }
-    const map = new Map();
-    allProducts.forEach(glass => {
-      const key = `${glass.name?.toLowerCase()}_${glass.capacity}_${glass.weight}_${glass.neck_diameter}`;
-      const stock = glass.available_stock ?? 0;
-      map.set(key, stock);
-    });
-    return map;
-  }, [allProducts, glassMasterReady, dataVersion]);
+ const glassLookupMap = useMemo(() => {
+  if (!glassMasterReady || !Array.isArray(allProducts) || allProducts.length === 0) {
+    return new Map();
+  }
+  const map = new Map();
+  allProducts.forEach(glass => {
+    const key = `${glass.name?.toLowerCase()}_${glass.capacity}_${glass.weight}_${glass.neck_diameter}`;
+    const stock = glass.available_stock ?? 0;
+    map.set(key, stock);
+  });
+  return map;
+}, [allProducts, glassMasterReady, dataVersion]);
 
   const getAvailableStock = useCallback((glassComponent) => {
     if (!glassComponent || !glassMasterReady || allProducts.length === 0) return 0;
@@ -93,14 +93,14 @@ const GlassOrders = ({
   // Date filtering function
   const filterOrdersByDate = useCallback((orders) => {
     if (!startDate && !endDate) return orders;
-    
+
     return orders.filter(order => {
       if (!order.created_at) return true; // Keep orders without date
-      
+
       const orderDate = new Date(order.created_at);
       const start = startDate ? new Date(startDate) : null;
       const end = endDate ? new Date(endDate) : null;
-      
+
       if (start && end) {
         return orderDate >= start && orderDate <= end;
       } else if (start) {
@@ -108,12 +108,12 @@ const GlassOrders = ({
       } else if (end) {
         return orderDate <= end;
       }
-      
+
       return true;
     });
   }, [startDate, endDate]);
 
-   const filteredOrders = useMemo(() => {
+  const filteredOrders = useMemo(() => {
     let filtered = Array.isArray(currentOrders) ? [...currentOrders] : [];
 
     // Apply date filtering first
@@ -161,17 +161,17 @@ const GlassOrders = ({
     try {
       // Create CSV content
       let csvContent = "Order Number,Manager,Customer,Item Name,Glass Name,Weight,Capacity,Neck Diameter,Glass Qty,Remaining Qty,Status,Created At,Priority\n";
-      
+
       filteredOrders.forEach(order => {
         order.items?.forEach(item => {
-          const glasses = item.components?.filter(c => 
+          const glasses = item.components?.filter(c =>
             c.component_type === "glass"
           ) || [];
-          
+
           glasses.forEach(glass => {
             const remainingQty = getRemainingQty(glass);
             const status = glass.status || 'N/A';
-            
+
             const row = [
               order.order_number || '',
               order.manager_name || '',
@@ -187,7 +187,7 @@ const GlassOrders = ({
               order.created_at || '',
               order.priority || 'Normal'
             ].map(field => `"${String(field).replace(/"/g, '""')}"`).join(',');
-            
+
             csvContent += row + "\n";
           });
         });
@@ -378,7 +378,7 @@ const GlassOrders = ({
   ]);
 
   // Enhanced filtered orders with date filtering
- 
+
 
   const paginatedOrders = useMemo(() => {
     const indexOfLastOrder = currentPage * ordersPerPage;
@@ -497,6 +497,7 @@ const GlassOrders = ({
     setSelectedOrder(order);
     setSelectedItem(item);
     setShowVehicleDetails(true);
+    setSelectedComponent(component)
   }, []);
 
   const handleDispatch = useCallback((order, item, component) => {
@@ -549,15 +550,17 @@ const GlassOrders = ({
           setLoading(false);
         });
 
-        socket.once("glassStockAdjustedSelf", ({ dataCode, newStock }) => {
-          console.log("📦 Stock adjusted:", dataCode, newStock);
+      socket.once("glassStockAdjustedSelf", ({ dataCode, newStock }) => {
+  console.log("📦 Stock adjusted:", dataCode, newStock);
 
-          const updatedProducts = allProducts.map(p =>
-            p.data_code === dataCode ? { ...p, available_stock: newStock } : p
-          );
-
-          onStockUpdate(updatedProducts);
-        });
+  // Fix: Use map instead of find, and ensure allProducts is an array
+  if (Array.isArray(allProducts)) {
+    const updatedProducts = allProducts.map(p =>
+      p.data_code === dataCode ? { ...p, available_stock: newStock } : p
+    );
+    onStockUpdate(updatedProducts);
+  }
+});
 
         socket.once("glassRollbackError", ({ message }) => {
           console.error("❌ Rollback error:", message);
@@ -790,6 +793,7 @@ const GlassOrders = ({
           orderData={selectedOrder}
           itemData={selectedItem}
           onUpdate={handleLocalOrderUpdate}
+          selectedComponent={selectedComponent}
         />
       )}
       {dispatchOrder && selectedOrder && selectedItem && (

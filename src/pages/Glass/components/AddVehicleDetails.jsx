@@ -2,7 +2,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { X, Save, Plus, Minus, Truck } from 'lucide-react';
 import { getSocket } from '../../../context/SocketContext';
 
-const AddVehicleDetails = ({ isOpen, onClose, orderData, itemData, onUpdate }) => {
+const AddVehicleDetails = ({ isOpen, onClose, orderData, itemData, onUpdate , selectedComponent}) => {
+  console.log(selectedComponent)
   const [vehicleDetails, setVehicleDetails] = useState([]);
   const [errors, setErrors] = useState({});
   const [numberOfVehicles, setNumberOfVehicles] = useState(1);
@@ -61,6 +62,9 @@ const AddVehicleDetails = ({ isOpen, onClose, orderData, itemData, onUpdate }) =
       }, 300);
     };
 
+    const handleClose =()=>{
+      setVehicleDetails(null)
+    }
     const handleVehicleError = (error) => {
       console.error("❌ Vehicle update failed:", error);
       alert(`Vehicle update failed: ${error}`);
@@ -78,7 +82,10 @@ const AddVehicleDetails = ({ isOpen, onClose, orderData, itemData, onUpdate }) =
 
   useEffect(() => {
     if (isOpen && itemData) {
-      const existingVehicleDetails = itemData.components[0].vehicle_details;
+const existingVehicleDetails = itemData.components.find(
+  (f) => f.component_id === selectedComponent.component_id
+)?.vehicle_details;
+
 
       if (existingVehicleDetails && existingVehicleDetails.length > 0) {
         const formattedDetails = existingVehicleDetails.map(vehicle => ({

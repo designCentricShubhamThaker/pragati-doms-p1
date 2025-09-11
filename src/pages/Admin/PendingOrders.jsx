@@ -136,7 +136,7 @@ const PendingOrders = () => {
                           : 'bg-gradient-to-r from-[#FFF0E6] via-[#FFDAB3] to-[#FFE6CC]';
 
                         return (
-                          <tr key={order._id} className={`${rowBgColor} transition-all duration-300`}>
+                          <tr key={order.order_number} className={`${rowBgColor} transition-all duration-300`}>
                             <td className="px-2 py-3 text-center text-sm font-medium text-[#FF6900]">{order.order_number}</td>
                             <td className="px-2 py-3 text-left text-sm text-[#703800]">{order.dispatcher_name}</td>
                             <td className="px-2 py-3 text-left text-sm text-[#703800]">{order.customer_name}</td>
@@ -199,7 +199,7 @@ const PendingOrders = () => {
                   <div className="text-center py-8 text-gray-500">No orders found</div>
                 ) : (
                   currentOrders.map((order, idx) => (
-                    <div key={order._id} className="bg-gradient-to-r from-orange-50 to-orange-100 rounded-lg p-4 border border-orange-200 shadow-sm">
+                    <div key={order.order_number} className="bg-gradient-to-r from-orange-50 to-orange-100 rounded-lg p-4 border border-orange-200 shadow-sm">
                       {/* Order Header */}
                       <div className="flex items-center justify-between mb-3">
                         <div className="flex items-center gap-2">

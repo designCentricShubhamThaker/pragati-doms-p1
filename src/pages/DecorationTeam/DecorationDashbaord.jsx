@@ -678,3 +678,4 @@ const handleDecorationComponentDispatched = ({
 };
 
 export default DecorationDashboard;
+

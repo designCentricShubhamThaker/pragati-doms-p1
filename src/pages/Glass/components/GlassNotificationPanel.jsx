@@ -44,19 +44,8 @@ const GlassNotificationPanel = forwardRef(({ teamName = "glass" }, ref) => {
     }
   }, []);
 
-  // Expose methods to parent component
-  useImperativeHandle(ref, () => ({
-    addNotification: (eventType, data) => {
-      const notification = createNotification(eventType, data);
-      if (notification) {
-        setNotifications(prev => [notification, ...prev.slice(0, 49)]); // Keep max 50
-        setUnreadCount(prev => prev + 1);
-        playNotificationSound();
-      }
-    }
-  }));
-
   const createNotification = useCallback((eventType, data) => {
+    console.log('🔔 Creating notification:', eventType, data);
     const id = Date.now() + Math.random();
     const timestamp = new Date();
 
@@ -174,9 +163,50 @@ const GlassNotificationPanel = forwardRef(({ teamName = "glass" }, ref) => {
         };
 
       default:
+        console.warn('Unknown notification event type:', eventType);
         return null;
     }
   }, []);
+
+  const addNotificationMethod = useCallback((eventType, data) => {
+    console.log('🔔 AddNotification called:', eventType, data);
+    
+    const notification = createNotification(eventType, data);
+    if (notification) {
+      console.log('✅ Notification created:', notification);
+      setNotifications(prev => {
+        const newNotifications = [notification, ...prev.slice(0, 49)]; // Keep max 50
+        console.log('📊 Updated notifications list:', newNotifications.length, 'total');
+        return newNotifications;
+      });
+      setUnreadCount(prev => {
+        const newCount = prev + 1;
+        console.log('📈 Updated unread count:', newCount);
+        return newCount;
+      });
+      playNotificationSound();
+      console.log('🔔 Notification added successfully');
+    } else {
+      console.warn('⚠️ Failed to create notification for:', eventType, data);
+    }
+  }, [createNotification, playNotificationSound]);
+
+  // Expose methods to parent component
+  useImperativeHandle(ref, () => ({
+    addNotification: addNotificationMethod,
+    // Expose additional methods for debugging
+    getNotificationCount: () => notifications.length,
+    getUnreadCount: () => unreadCount
+  }), [addNotificationMethod, notifications.length, unreadCount]);
+
+  // Debug log when ref is attached
+  useEffect(() => {
+    console.log('🔗 GlassNotificationPanel ref attached, methods available:', {
+      hasAddNotification: typeof addNotificationMethod === 'function',
+      notificationCount: notifications.length,
+      unreadCount: unreadCount
+    });
+  }, [addNotificationMethod, notifications.length, unreadCount]);
 
   const markAsRead = useCallback((notificationId) => {
     setNotifications(prev => 

@@ -167,7 +167,7 @@ const TeamSearchAggregation = ({
 
           <button
             onClick={onDownloadExcel}
-            className="flex items-center justify-center px-3 py-2 bg-green-600 text-white text-sm font-medium rounded-md hover:bg-green-700 focus:outline-none transition-colors duration-200"
+            className="flex items-center justify-center px-3 py-2 bg-green-900 text-white text-sm font-medium rounded-md hover:bg-green-700 focus:outline-none transition-colors duration-200"
             title="Download current data as Excel"
           >
             <Download size={16} />

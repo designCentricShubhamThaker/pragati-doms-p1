@@ -313,7 +313,7 @@ const OrderTable = ({
               const bgColor = colorClasses[itemIndex % colorClasses.length];
 
               return (
-                <div key={item._id} className={bgColor}>
+                <div key={itemIndex} className={bgColor}>
                   <div className="px-4 py-3">
                     <div className="flex items-center justify-between mb-2">
                       <h4 className="font-medium text-orange-800 text-sm">{item.item_name}</h4>

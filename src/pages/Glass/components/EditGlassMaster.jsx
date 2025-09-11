@@ -18,7 +18,7 @@ const EditGlassMaster = ({ isOpen, onClose, product, onProductUpdated }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
-    const socket = getSocket();
+  const socket = getSocket();
 
 
   useEffect(() => {
@@ -48,35 +48,35 @@ const EditGlassMaster = ({ isOpen, onClose, product, onProductUpdated }) => {
   };
 
   const handleSubmit = async (e) => {
-  e.preventDefault();
-  setLoading(true);
-  setError('');
+    e.preventDefault();
+    setLoading(true);
+    setError('');
 
-  try {
-    const updateData = { ...formData };
+    try {
+      const updateData = { ...formData };
 
-    socket.emit("updateGlass", { updateData });
+      socket.emit("updateGlass", { updateData });
 
-    socket.once("glassUpdatedSelf", (updatedGlass) => {
-      setSuccessMessage("Product updated successfully!");
-      setTimeout(() => {
-        onProductUpdated?.(updatedGlass);
-        onClose();
-      }, 1500);
-    });
+      socket.once("glassUpdatedSelf", (updatedGlass) => {
+        setSuccessMessage("Product updated successfully!");
+        setTimeout(() => {
+          onProductUpdated?.(updatedGlass);
+          onClose();
+        }, 1500);
+      });
 
-    socket.once("glassUpdateError", (error) => {
-      console.error("Update glass error via socket:", error);
-      setError(error || "Failed to update product");
-    });
+      socket.once("glassUpdateError", (error) => {
+        console.error("Update glass error via socket:", error);
+        setError(error || "Failed to update product");
+      });
 
-  } catch (err) {
-    setError("Error connecting to server");
-    console.error("Update error:", err);
-  } finally {
-    setLoading(false);
-  }
-};
+    } catch (err) {
+      setError("Error connecting to server");
+      console.error("Update error:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
 
   if (!isOpen) return null;
@@ -87,7 +87,7 @@ const EditGlassMaster = ({ isOpen, onClose, product, onProductUpdated }) => {
       <div className="fixed inset-0 overflow-y-auto">
         <div className="flex min-h-full items-center justify-center p-2 sm:p-4">
           <DialogPanel className="w-full max-w-sm sm:max-w-2xl lg:max-w-4xl transform overflow-hidden rounded-lg bg-white shadow-xl transition-all">
-            
+
             {/* Header */}
             <div className="bg-orange-600 text-white px-3 sm:px-4 py-3 flex justify-between items-start gap-4 rounded-t-lg">
               <div className="min-w-0 flex-1">
@@ -125,11 +125,11 @@ const EditGlassMaster = ({ isOpen, onClose, product, onProductUpdated }) => {
             {/* Form Content */}
             <div className="max-h-[60vh] overflow-y-auto p-3 sm:p-6">
               <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-6">
-                
+
                 {/* Basic Information Section */}
                 <div className="bg-orange-50 rounded-lg p-4 sm:p-6">
                   <h3 className="text-lg font-semibold text-orange-900 mb-4">Basic Information</h3>
-                  
+
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -205,7 +205,7 @@ const EditGlassMaster = ({ isOpen, onClose, product, onProductUpdated }) => {
                 {/* Technical Specifications Section */}
                 <div className="bg-yellow-50 rounded-lg p-4 sm:p-6">
                   <h3 className="text-lg font-semibold text-orange-900 mb-4">Technical Specifications</h3>
-                  
+
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">

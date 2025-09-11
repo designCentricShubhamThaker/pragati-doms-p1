@@ -343,7 +343,7 @@ export const updateOrderInLocalStorage = (team, updatedOrder) => {
     const allOrders = stored;
 
     const orderIndex = allOrders.findIndex(
-      o => o._id === updatedOrder._id || o.order_number === updatedOrder.order_number
+      o => o.order_number === updatedOrder.order_number
     );
 
     if (orderIndex === -1) {

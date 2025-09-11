@@ -1,14 +1,17 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { ChevronRight, ChevronDown, Menu, ChevronLeft } from 'lucide-react';
 import { FaPowerOff } from "react-icons/fa";
 import { useCurrentDateTime } from '../../hooks/useCurrentDateTime';
 import DecorationDashboard from '../DecorationTeam/DecorationDashbaord';
 import { TEAM_CONFIGS } from '../../utils/constants.js';
+import { getSocket } from '../../context/SocketContext.jsx';
+import { getLocalStorageData, getStorageKey, updateOrderInLocalStorage } from '../../utils/orderStorage.jsx';
 
 const DecoAdminDashboard = () => {
   const [activeMenuItem, setActiveMenuItem] = useState('printing');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { currentDateTime, formatTime, formatTimeMobile } = useCurrentDateTime();
+  const socket = getSocket();
 
   const handleLogout = () => {
     console.log('Logout clicked');
@@ -22,6 +25,272 @@ const DecoAdminDashboard = () => {
     { id: 'frosting', label: 'Frost', teamName: 'frosting' },
     { id: 'metalized', label: 'Metallised', teamName: 'metalized' }
   ];
+
+  // ========= ORDER UPDATE HELPER =========
+  const handleOrderUpdate = useCallback((orderNumber, itemId, componentId, updatedComponent, newStatus, itemChanges = {}, orderChanges = {}, teamName) => {
+    if (!teamName) return;
+    
+    const STORAGE_KEY = getStorageKey(teamName);
+    if(!localStorage.getItem(STORAGE_KEY)) return
+    let allOrders = getLocalStorageData(STORAGE_KEY) || [];
+
+    const orderIndex = allOrders.findIndex(order => order.order_number === orderNumber);
+    if (orderIndex === -1) return;
+
+    const newOrders = [...allOrders];
+    newOrders[orderIndex] = {
+      ...newOrders[orderIndex],
+      status: orderChanges?.new_status || newOrders[orderIndex].status,
+      items: newOrders[orderIndex].items.map(item =>
+        item.item_id === itemId
+          ? {
+            ...item,
+            status: itemChanges?.new_status || item.status,
+            components: item.components.map(c =>
+              c.component_id === componentId
+                ? { ...c, ...updatedComponent, last_updated: new Date().toISOString() }
+                : c
+            )
+          }
+          : item
+      )
+    };
+
+    updateOrderInLocalStorage(teamName, newOrders[orderIndex]);
+    
+    // Trigger refresh for embedded dashboards
+    window.dispatchEvent(new CustomEvent('decoAdminUpdate', {
+      detail: { team: teamName, orderNumber, updateType: 'orderUpdate', timestamp: Date.now() }
+    }));
+  }, []);
+
+  // ========= SOCKET SETUP =========
+  useEffect(() => {
+    if (!socket) return;
+
+    // Join production room (same as individual decoration teams)
+    socket.emit("joinProduction");
+
+    socket.on("joinedProduction", ({ message }) => {
+      console.log(`✅ [DecoAdmin] Production room joined:`, message);
+    });
+
+    // Listen to the same events as individual decoration teams
+    const handleDecorationProductionUpdated = ({ team, order_number, item_id, component_id, updatedComponent }) => {
+      console.log(`📦 [DecoAdmin] Production updated for team ${team}:`, { order_number, component_id });
+      handleOrderUpdate(order_number, item_id, component_id, updatedComponent, updatedComponent?.status, {}, {}, team);
+    };
+
+    const handleDecorationComponentDispatched = ({
+      team,
+      order_number,
+      item_id,
+      component_id,
+      updatedComponent,
+      itemChanges,
+      orderChanges,
+      timestamp
+    }) => {
+      console.log(`🚚 [DecoAdmin] Component dispatched from team ${team}:`, { order_number, component_id });
+      
+      if (!updatedComponent) {
+        console.log(`⚠️ [DecoAdmin] No updatedComponent in dispatch update for ${team}, ignoring`);
+        return;
+      }
+
+      const enhancedUpdatedComponent = {
+        ...updatedComponent,
+        last_updated: timestamp || new Date().toISOString(),
+        sequence_last_dispatch: {
+          team: team,
+          at: timestamp || new Date().toISOString()
+        }
+      };
+
+      handleOrderUpdate(
+        order_number,
+        item_id,
+        component_id,
+        enhancedUpdatedComponent,
+        enhancedUpdatedComponent?.status,
+        itemChanges,
+        orderChanges,
+        team
+      );
+    };
+
+    const handleTeamCanStartWork = ({
+      order_number,
+      item_id,
+      component_id,
+      team,
+      deco_sequence,
+      previous_team,
+      timestamp
+    }) => {
+      console.log(`🔔 [DecoAdmin] Team ${team} can start work:`, { order_number, component_id, previous_team });
+      
+      if (!deco_sequence || typeof deco_sequence !== 'string') {
+        console.log(`⚠️ [DecoAdmin] No valid deco_sequence in team notification, ignoring`);
+        return;
+      }
+
+      const sequence = deco_sequence.split('_').filter(Boolean);
+      
+      // Update for the team that can start work
+      const updatedComponent = {
+        decorations: {
+          [previous_team]: {
+            status: 'DISPATCHED',
+            dispatched_at: timestamp || new Date().toISOString()
+          }
+        },
+        deco_sequence: deco_sequence,
+        sequence_updated_at: timestamp || new Date().toISOString(),
+        last_completed_team: previous_team,
+        next_team_notified: team
+      };
+
+      handleOrderUpdate(order_number, item_id, component_id, updatedComponent, null, {}, {}, team);
+    };
+
+    const handleVehicleDetailsReceived = ({
+      order_number,
+      item_id,
+      component_id,
+      vehicle_details,
+      deco_sequence,
+      timestamp
+    }) => {
+      console.log(`🚛 [DecoAdmin] Vehicle details received:`, { order_number, component_id, vehicle_count: vehicle_details?.length });
+      
+      if (!deco_sequence || typeof deco_sequence !== 'string') {
+        console.log(`⚠️ [DecoAdmin] No valid deco_sequence, ignoring vehicle details`);
+        return;
+      }
+
+      const sequence = deco_sequence.split('_').filter(Boolean);
+      
+      // Update all teams in sequence
+      sequence.forEach(teamName => {
+        const updatedComponent = {
+          vehicle_details: vehicle_details || [],
+          deco_sequence: deco_sequence,
+          vehicles_received_at: timestamp || new Date().toISOString()
+        };
+
+        handleOrderUpdate(order_number, item_id, component_id, updatedComponent, null, {}, {}, teamName);
+      });
+    };
+
+    const handleVehicleMarkedDelivered = ({
+      order_number,
+      item_id,
+      component_id,
+      vehicle_details,
+      deco_sequence,
+      marked_by,
+      timestamp
+    }) => {
+      console.log(`✅ [DecoAdmin] Vehicle marked delivered by ${marked_by}:`, { order_number, component_id });
+      
+      if (!deco_sequence || typeof deco_sequence !== 'string') {
+        console.log(`⚠️ [DecoAdmin] No valid deco_sequence in delivery update, ignoring`);
+        return;
+      }
+
+      const sequence = deco_sequence.split('_').filter(Boolean);
+      
+      // Update all teams in sequence
+      sequence.forEach(teamName => {
+        const updatedComponent = {
+          vehicle_details: vehicle_details || [],
+          all_vehicles_delivered: true,
+          vehicles_delivered_by: marked_by,
+          vehicles_delivered_at: timestamp || new Date().toISOString(),
+          deco_sequence: deco_sequence
+        };
+
+        handleOrderUpdate(order_number, item_id, component_id, updatedComponent, null, {}, {}, teamName);
+      });
+    };
+
+    const handleComponentDispatchedFromGlass = ({
+      order_number,
+      item_id,
+      component_id,
+      component_data,
+      deco_sequence
+    }) => {
+      console.log(`🔍 [DecoAdmin] Component received from glass:`, { order_number, component_id, sequence: deco_sequence });
+
+      if (!deco_sequence || typeof deco_sequence !== 'string') {
+        console.log(`⚠️ [DecoAdmin] No valid deco_sequence in glass dispatch, ignoring`);
+        return;
+      }
+
+      const sequence = deco_sequence.split('_').filter(Boolean);
+      
+      // Update all teams in sequence
+      sequence.forEach(teamName => {
+        const updatedComponent = {
+          ...component_data,
+          received_from_glass: true,
+          received_at: new Date().toISOString()
+        };
+
+        handleOrderUpdate(order_number, item_id, component_id, updatedComponent, null, {}, {}, teamName);
+      });
+    };
+
+    const handleVehicleApprovalRequired = ({
+      order_number,
+      item_id,
+      component_id,
+      vehicle_details,
+      deco_sequence
+    }) => {
+      console.log(`🔔 [DecoAdmin] Vehicle approval required:`, { order_number, component_id, vehicle_count: vehicle_details?.length });
+      
+      if (!deco_sequence || typeof deco_sequence !== 'string') {
+        console.log(`⚠️ [DecoAdmin] No valid deco_sequence in vehicle approval, ignoring`);
+        return;
+      }
+
+      const sequence = deco_sequence.split('_').filter(Boolean);
+      
+      // Update all teams in sequence
+      sequence.forEach(teamName => {
+        const updatedComponent = {
+          vehicle_details: vehicle_details || [],
+          deco_sequence: deco_sequence,
+          vehicles_received_at: new Date().toISOString()
+        };
+
+        handleOrderUpdate(order_number, item_id, component_id, updatedComponent, null, {}, {}, teamName);
+      });
+    };
+
+    socket.on("decorationProductionUpdated", handleDecorationProductionUpdated);
+    socket.on("decorationComponentDispatched", handleDecorationComponentDispatched);
+    socket.on("vehicleDetailsReceived", handleVehicleDetailsReceived);
+    socket.on("vehicleMarkedDelivered", handleVehicleMarkedDelivered);
+    socket.on("componentDispatchedFromGlass", handleComponentDispatchedFromGlass);
+    socket.on("vehicleApprovalRequired", handleVehicleApprovalRequired);
+    socket.on("teamCanStartWork", handleTeamCanStartWork);
+
+    return () => {
+      console.log(`🔌 [DecoAdmin] Cleaning up socket listeners`);
+      socket.off("joinedProduction");
+      socket.off("decorationProductionUpdated", handleDecorationProductionUpdated);
+      socket.off("decorationComponentDispatched", handleDecorationComponentDispatched);
+      socket.off("vehicleDetailsReceived", handleVehicleDetailsReceived);
+      socket.off("vehicleMarkedDelivered", handleVehicleMarkedDelivered);
+      socket.off("componentDispatchedFromGlass", handleComponentDispatchedFromGlass);
+      socket.off("vehicleApprovalRequired", handleVehicleApprovalRequired);
+      socket.off("teamCanStartWork", handleTeamCanStartWork);
+    };
+  }, [socket, handleOrderUpdate]);
 
   const handleMenuClick = (itemId) => {
     setActiveMenuItem(itemId);

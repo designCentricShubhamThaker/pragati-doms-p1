@@ -509,7 +509,7 @@ const GlassMaster = ({  loading,
                   {paginatedProducts.length > 0 ? (
                     paginatedProducts.map((product, index) => (
                       <tr
-                        key={product._id}
+                        key={product.data_data}
                         className={`border-b border-slate-200 hover:bg-orange-50/50 transition-colors duration-200 ${index % 2 === 0 ? 'bg-white/50' : 'bg-slate-50/50'
                           }`}
                       >

@@ -47,75 +47,98 @@ const UpdateTeamQty = ({ isOpen, onClose, orderData, itemData, onUpdate, teamNam
     }
   }, [isOpen, itemData, teamName]);
 
+const handleSave = async () => {
+  try {
+    setLoading(true);
+    setError(null);
 
+    const updates = assignments
+      .filter(a => parseInt(a.todayQty) > 0 && a.canEdit)
+      .map(a => ({
+        component_id: a.component_id,
+        quantity_produced: parseInt(a.todayQty),
+        username: `${teamName}_admin`,
+        notes: a.notes || "Production update",
+        date: new Date().toISOString()
+      }));
 
-  // OPTIONAL: Add a simpler version that doesn't wait for confirmations
-  const handleSave = async () => {
-    try {
-      setLoading(true);
-      setError(null);
+    if (updates.length === 0) {
+      setError(`Please enter quantity for at least one ${teamName} item`);
+      setLoading(false);
+      return;
+    }
 
-      const updates = assignments
-        .filter(a => parseInt(a.todayQty) > 0 && a.canEdit)
-        .map(a => ({
-          component_id: a.component_id,
-          quantity_produced: parseInt(a.todayQty),
-          username: `${teamName}_admin`,
-          notes: a.notes || "Production update",
-          date: new Date().toISOString()
-        }));
+    console.log("📤 Emitting updates for", teamName, ":", updates);
 
-      if (updates.length === 0) {
-        setError(`Please enter quantity for at least one ${teamName} item`);
-        setLoading(false);
-        return;
-      }
-
-      console.log("📤 Emitting updates (async mode):", updates);
-
-      // Emit all updates without waiting for individual confirmations
-      updates.forEach(update => {
-        const payload = {
-          team: teamName,
-          order_number: orderData.order_number,
-          item_id: itemData?.item_id,
-          component_id: update.component_id,
-          updateData: {
-            date: update.date,
-            username: update.username,
-            quantity_produced: update.quantity_produced,
-            notes: update.notes
-          }
-        };
-
-        socket.emit("updateDecorationProduction", payload);
-      });
-
-      // Set up a single listener for all updates
-      const handleGlobalSuccess = ({ team, order_number, item_id, component_id, updatedComponent }) => {
-        if (team === teamName && order_number === orderData.order_number) {
-          console.log(`✅ ${teamName} component updated:`, component_id);
-          onUpdate(order_number, item_id, component_id, updatedComponent, updatedComponent?.decorations?.[teamName]?.status);
+    // Process decoration updates sequentially
+    for (const update of updates) {
+      const payload = {
+        team: teamName,
+        order_number: orderData.order_number,
+        item_id: itemData?.item_id,
+        component_id: update.component_id,
+        updateData: {
+          date: update.date,
+          username: update.username,
+          quantity_produced: update.quantity_produced,
+          notes: update.notes
         }
       };
 
-      socket.on("decorationProductionUpdatedSelf", handleGlobalSuccess);
+      console.log(`📤 Emitting ${teamName} production update:`, payload);
 
-      // Clean up listener after component unmounts or modal closes
-      setTimeout(() => {
-        socket.off("decorationProductionUpdatedSelf", handleGlobalSuccess);
-      }, 30000); // 30 second cleanup
+      // Create promise for this specific production update
+      const productionResult = await new Promise((resolve, reject) => {
+        const cleanup = () => {
+          socket.off("decorationProductionUpdatedSelf", handleSuccess);
+          socket.off("decorationProductionError", handleError);
+        };
 
-      setSuccessMessage("Updates submitted successfully!");
-      setTimeout(() => onClose(), 1500);
+        const handleSuccess = (data) => {
+          // Only resolve if this response is for our team and order
+          if (data.team === teamName && data.order_number === orderData.order_number) {
+            cleanup();
+            resolve(data);
+          }
+        };
 
-    } catch (err) {
-      console.error("Error updating quantities:", err);
-      setError(err.message || "Failed to update quantities");
-    } finally {
-      setLoading(false);
+        const handleError = (err) => {
+          cleanup();
+          reject(err);
+        };
+
+        socket.emit("updateDecorationProduction", payload);
+        socket.on("decorationProductionUpdatedSelf", handleSuccess);
+        socket.once("decorationProductionError", handleError);
+
+        // Timeout after 10 seconds
+        setTimeout(() => {
+          cleanup();
+          reject(new Error(`Production update timeout (${teamName})`));
+        }, 10000);
+      });
+
+      const { order_number, item_id, component_id, updatedComponent } = productionResult;
+      console.log(`✅ ${teamName} component updated:`, component_id);
+      onUpdate(
+        order_number, 
+        item_id, 
+        component_id, 
+        updatedComponent, 
+        updatedComponent?.decorations?.[teamName]?.status
+      );
     }
-  };
+
+    setSuccessMessage(`${teamName} updates submitted successfully!`);
+    setTimeout(() => onClose(), 1500);
+
+  } catch (err) {
+    console.error(`Error updating ${teamName} quantities:`, err);
+    setError(err.message || `Failed to update ${teamName} quantities`);
+  } finally {
+    setLoading(false);
+  }
+};
 
 
 

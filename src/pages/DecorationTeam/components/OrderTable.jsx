@@ -509,7 +509,7 @@ const renderTeamCheck = (glass) => {
               if (teamGlasses.length === 0) return null;
 
               return (
-                <div key={item._id} className={bgColor}>
+                <div key={itemIndex} className={bgColor}>
                   {/* Item Header */}
                   <div className="px-4 py-2 border-b border-gray-200">
                     <div className="flex items-center justify-between">

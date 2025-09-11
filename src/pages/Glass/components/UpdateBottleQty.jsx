@@ -130,110 +130,110 @@ const UpdateBottleQty = ({ isOpen, onClose, orderData, itemData, stockQuantities
     return Math.max(total - completed, 0);
   };
 
-
-
-
   const handleSave = async () => {
-    try {
-      setLoading(true);
-      setError(null);
+  try {
+    setLoading(true);
+    setError(null);
 
-      if (mode === "rollBack") {
-        // 🔥 Rollback flow
-        const rollbackAssignments = assignments.filter(a => a.todayQty !== 0);
+    if (mode === "rollBack") {
+      // 🔥 Rollback flow for Glass
+      const rollbackAssignments = assignments.filter(a => a.todayQty);
+      console.log(rollbackAssignments, "rollbackassignment");
 
-        console.log(rollbackAssignments, "rollback assignment");
-        if (rollbackAssignments.length === 0) {
-          setError("Please enter a rollback quantity for at least one Pump");
-          setLoading(false);
-          return;
-        }
-
-        for (let assignment of rollbackAssignments) {
-          const adjustmentQuantity = assignment.todayQty;
-          const reason = assignment.notes || "Defective / rollback adjustment";
-
-          console.log(adjustmentQuantity, "adjusted value")
-          if (!adjustmentQuantity || adjustmentQuantity === 0) {
-            setError(`Invalid rollback quantity for ${assignment.pump_name}`);
-            setLoading(false);
-            return;
-          }
-
-          if (!reason.trim()) {
-            setError(`Please provide a reason for ${assignment.pump_name}`);
-            setLoading(false);
-            return;
-          }
-
-          // Build rollback payload
-          const adjustmentPayload = {
-            order_number: orderData.order_number,
-            item_id: itemData?.item_id,
-            component_id: assignment.component_id,
-            updateData: {
-              quantity_to_remove: adjustmentQuantity,
-              username: "glass_admin",
-              reason: reason.trim(),
-              notes: `Negative adjustment: -${adjustmentQuantity} units removed. Reason: ${reason.trim()}`
-            }
-          };
-
-          console.log("📤 Emitting rollback adjustment:", adjustmentPayload);
-          socket.emit("negativeAdjustmentGlassComponent", adjustmentPayload);
-        }
-
-        // ✅ Listen once for response
-        socket.once("glassNegativeAdjustmentUpdatedSelf", (data) => {
-          console.log("✅ Rollback updated:", data);
-          onUpdate(
-            data.order_number,
-            data.item_id,
-            data.component_id,
-            data.updatedComponent,
-            data.updatedComponent?.status,
-            data.itemChanges,
-            data.orderChanges
-          );
-        });
-
-        socket.once("glassNegativeAdjustmentError", ({ message }) => {
-          console.error("Rollback error:", message);
-          setError(`Error adjusting quantity: ${message}`);
-        });
-
-        setSuccessMessage("Rollback adjustments submitted successfully!");
-        setTimeout(() => onClose(), 1500);
+      if (rollbackAssignments.length === 0) {
+        setError("Please enter a rollback quantity for at least one Glass Component");
+        setLoading(false);
+        return;
       }
 
-      else {
-        // ✅ Normal Production Flow
-        const updates = assignments
-          .filter(a => a.todayQty !== 0)
-          .map(a => {
-            const currentCompleted = a.completed_qty || 0;
-            const stockUsed = stockQuantities[a.component_id] || 0;
-            const newProduction = Math.max(0, a.todayQty - stockUsed);
-            const newCompleted = currentCompleted + a.todayQty;
+      // Process rollback assignments sequentially
+      for (const assignment of rollbackAssignments) {
+        const payload = {
+          order_number: orderData.order_number,
+          item_id: itemData?.item_id,
+          component_id: assignment.component_id,
+          updateData: {
+            quantity_to_remove: assignment.todayQty,
+            username: "glass_admin",
+            reason: assignment.notes || "Defective / rollback adjustment",
+            notes: `Negative adjustment: -${assignment.todayQty} units removed. Reason: ${assignment.notes}`
+          }
+        };
 
-            return {
-              component_data_code: a.data_code,
-              component_id: a.component_id,
-              quantity_produced: newProduction,
-              stock_used: stockUsed,
-              total_completed: newCompleted,
-              notes: a.notes || "",
-              date: new Date().toISOString()
-            };
-          });
+        console.log("📤 Emitting rollback adjustment (Glass):", payload);
 
-        if (updates.length === 0) {
-          setError("Please enter quantity for at least one glass");
-          setLoading(false);
-          return;
-        }
+        // Create promise for this specific rollback
+        const rollbackResult = await new Promise((resolve, reject) => {
+          const cleanup = () => {
+            socket.off("glassNegativeAdjustmentUpdatedSelf", handleSuccess);
+            socket.off("glassNegativeAdjustmentError", handleError);
+          };
 
-        for (let assignment of assignments) {
+          const handleSuccess = (data) => {
+            cleanup();
+            resolve(data);
+          };
+
+          const handleError = (err) => {
+            cleanup();
+            reject(err);
+          };
+
+          socket.emit("negativeAdjustmentGlassComponent", payload);
+          socket.once("glassNegativeAdjustmentUpdatedSelf", handleSuccess);
+          socket.once("glassNegativeAdjustmentError", handleError);
+
+          // Timeout after 10 seconds
+          setTimeout(() => {
+            cleanup();
+            reject(new Error("Rollback operation timeout (Glass)"));
+          }, 10000);
+        });
+
+        console.log("✅ Glass Rollback updated:", rollbackResult);
+        onUpdate(
+          rollbackResult.order_number,
+          rollbackResult.item_id,
+          rollbackResult.component_id,
+          rollbackResult.updatedComponent,
+          rollbackResult.updatedComponent?.status,
+          rollbackResult.itemChanges,
+          rollbackResult.orderChanges
+        );
+      }
+
+      setSuccessMessage("Glass rollback adjustments submitted successfully!");
+      setTimeout(() => onClose(), 1500);
+
+    } else {
+      // ✅ Normal Production Flow for Glass
+      const updates = assignments
+        .filter(a => a.todayQty)
+        .map(a => {
+          const currentCompleted = a.completed_qty || 0;
+          const stockUsed = stockQuantities[a.component_id] || 0;
+          return {
+            component_data_code: a.data_code,
+            component_id: a.component_id,
+            quantity_produced: Math.max(0, a.todayQty - stockUsed),
+            stock_used: stockUsed,
+            total_completed: currentCompleted + a.todayQty,
+            notes: a.notes || "",
+            date: new Date().toISOString()
+          };
+        });
+
+      console.log(updates, "updates for Glass handle production");
+
+      if (updates.length === 0) {
+        setError("Please enter quantity for at least one Glass Component");
+        setLoading(false);
+        return;
+      }
+
+      // Validate remaining quantities before processing
+      for (const assignment of assignments) {
+        if (assignment.todayQty) {
           const remaining = getRemainingQty(assignment);
           if (assignment.todayQty > remaining) {
             setError(`Quantity for ${assignment.name} exceeds remaining amount (${remaining})`);
@@ -241,68 +241,79 @@ const UpdateBottleQty = ({ isOpen, onClose, orderData, itemData, stockQuantities
             return;
           }
         }
+      }
 
-        console.log("📤 Emitting production updates:", updates);
+      // Process production updates sequentially
+      for (const update of updates) {
+        const payload = {
+          order_number: orderData.order_number,
+          item_id: itemData?.item_id,
+          component_id: update.component_id,
+          component_data_code: update.component_data_code,
+          updateData: {
+            date: update.date,
+            quantity_produced: update.quantity_produced,
+            stock_used: update.stock_used,
+            total_completed: update.total_completed,
+            notes: update.notes
+          }
+        };
 
-        for (let update of updates) {
-          const payload = {
-            order_number: orderData.order_number,
-            item_id: itemData?.item_id,
-            component_id: update.component_id,
-            component_data_code: update.component_data_code,
-            updateData: {
-              date: update.date,
-              quantity_produced: update.quantity_produced,
-              stock_used: update.stock_used,
-              total_completed: update.total_completed,
-              notes: update.notes
-            }
+        console.log("📤 Emitting glass production update:", payload);
+
+        // Create promise for this specific production update
+        const productionResult = await new Promise((resolve, reject) => {
+          const cleanup = () => {
+            socket.off("glassProductionUpdatedSelf", handleSuccess);
+            socket.off("glassProductionError", handleError);
+          };
+
+          const handleSuccess = (data) => {
+            cleanup();
+            resolve(data);
+          };
+
+          const handleError = (err) => {
+            cleanup();
+            reject(err);
           };
 
           socket.emit("updateGlassProduction", payload);
+          socket.once("glassProductionUpdatedSelf", handleSuccess);
+          socket.once("glassProductionError", handleError);
 
-          // ✅ Production confirmation
-          socket.once("glassProductionUpdatedSelf", ({ order_number, item_id, component_id, updatedComponent }) => {
-            console.log("✅ Production updated:", order_number, item_id, component_id, updatedComponent);
-            onUpdate(order_number, item_id, component_id, updatedComponent, updatedComponent?.status);
-          });
+          // Timeout after 10 seconds
+          setTimeout(() => {
+            cleanup();
+            reject(new Error("Production update timeout (Glass)"));
+          }, 10000);
+        });
 
-          // 📦 Stock adjustment confirmation
-          socket.once("glassStockAdjustedSelf", ({ dataCode, newStock }) => {
-            console.log("📦 Stock adjusted:", dataCode, newStock);
-
-            const team = "glass";
-            const key = `${team}Master`;
-            const masterData = getLocalStorageData(key) || [];
-
-            const updatedData = masterData.map((p) =>
-              p.data_code === dataCode ? { ...p, available_stock: newStock } : p
-            );
-
-            onStockUpdate(updatedData);
-            localStorage.setItem("glassMaster", JSON.stringify(updatedData));
-          });
-
-          socket.once("glassProductionError", (error) => {
-            console.error("❌ glass update failed:", error);
-            setError(error || "glass update failed");
-          });
-        }
-
-        setSuccessMessage("Quantities updated successfully!");
-        setTimeout(() => {
-          onClose();
-        }, 1500);
-
+        const { order_number, item_id, component_id, updatedComponent } = productionResult;
+        onUpdate(order_number, item_id, component_id, updatedComponent, updatedComponent?.status);
       }
 
-    } catch (err) {
-      console.error("Error in handleSave:", err);
-      setError(err.message || "Failed to update quantities");
-    } finally {
-      setLoading(false);
+      // Handle stock adjustments after all production updates
+      socket.once("glassStockAdjustedSelf", ({ dataCode, newStock }) => {
+        const key = `glassMaster`;
+        const masterData = getLocalStorageData(key) || [];
+        const updatedData = masterData.map((p) =>
+          p.data_code === dataCode ? { ...p, available_stock: newStock } : p
+        );
+        onStockUpdate(updatedData);
+        localStorage.setItem("glassMaster", JSON.stringify(updatedData));
+      });
+
+      setSuccessMessage("Glass quantities updated successfully!");
+      setTimeout(() => onClose(), 1500);
     }
-  };
+  } catch (err) {
+    console.error("Error in handleSave (Glass):", err);
+    setError(err.message || "Failed to update glass quantities");
+  } finally {
+    setLoading(false);
+  }
+};
 
   return (
     <Dialog open={isOpen} onClose={onClose}>

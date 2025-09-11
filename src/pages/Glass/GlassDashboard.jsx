@@ -27,6 +27,24 @@ const GlassDashboard = ({ isEmbedded = false }) => {
     refreshOrders: 0
   });
 
+  // Helper function to safely trigger notifications
+  const triggerNotification = useCallback((eventType, data) => {
+    console.log('🔔 Attempting to trigger notification:', eventType, data);
+    if (notificationRef.current && notificationRef.current.addNotification) {
+      try {
+        notificationRef.current.addNotification(eventType, data);
+        console.log('✅ Notification triggered successfully:', eventType);
+      } catch (error) {
+        console.error('❌ Failed to trigger notification:', error);
+      }
+    } else {
+      console.warn('⚠️ Notification ref not available:', {
+        hasRef: !!notificationRef.current,
+        hasMethod: !!(notificationRef.current?.addNotification)
+      });
+    }
+  }, []);
+
   const fetchGlassMaster = useCallback(async () => {
     try {
       setGlobalState(prev => ({ ...prev, loading: true, error: null }));
@@ -86,255 +104,6 @@ const GlassDashboard = ({ isEmbedded = false }) => {
     initializeData();
   }, [fetchGlassMaster]);
 
-  useEffect(() => {
-    if (!socket) return;
-
-    // Join single production room
-    socket.emit("joinProduction");
-
-    socket.on("joinedProduction", ({ message }) => {
-      console.log("✅ Production room joined:", message);
-    });
-
-    // Glass-specific stock updates
-    const handleGlassStockUpdated = ({ data_code, newStock }) => {
-      setGlobalState(prev => {
-        const currentGlass = prev.allProducts.find(g => g.data_code === data_code);
-        if (!currentGlass || currentGlass.available_stock === newStock) return prev;
-
-        const updatedProducts = prev.allProducts.map(g =>
-          g.data_code === data_code ? { ...g, available_stock: newStock } : g
-        );
-        localStorage.setItem("glassMaster", JSON.stringify(updatedProducts));
-
-        return {
-          ...prev,
-          allProducts: updatedProducts,
-          dataVersion: prev.dataVersion + 1
-        };
-      });
-    };
-
-    // Glass master CRUD operations with notifications
-    const handleGlassAdded = (newGlass) => {
-      console.log("ADDED");
-      setGlobalState(prev => {
-        const updatedProducts = [...prev.allProducts, newGlass];
-        localStorage.setItem("glassMaster", JSON.stringify(updatedProducts));
-        return {
-          ...prev,
-          allProducts: updatedProducts,
-          dataVersion: prev.dataVersion + 1
-        };
-      });
-      
-      // Add notification
-      if (notificationRef.current) {
-        notificationRef.current.addNotification('glassAdded', newGlass);
-      }
-    };
-
-    const handleGlassUpdated = (updatedGlass) => {
-      setGlobalState(prev => {
-        const updatedProducts = prev.allProducts.map(p =>
-          p._id === updatedGlass._id ? updatedGlass : p
-        );
-        localStorage.setItem("glassMaster", JSON.stringify(updatedProducts));
-
-        return {
-          ...prev,
-          allProducts: updatedProducts,
-          dataVersion: prev.dataVersion + 1
-        };
-      });
-
-      // Add notification
-      if (notificationRef.current) {
-        notificationRef.current.addNotification('glassUpdated', updatedGlass);
-      }
-    };
-
-    const handleGlassDeleted = ({ productId }) => {
-      setGlobalState(prev => {
-        const updatedProducts = prev.allProducts.filter(g => g._id !== productId);
-        localStorage.setItem("glassMaster", JSON.stringify(updatedProducts));
-
-        return {
-          ...prev,
-          allProducts: updatedProducts,
-          dataVersion: prev.dataVersion + 1
-        };
-      });
-
-      // Add notification
-      if (notificationRef.current) {
-        notificationRef.current.addNotification('glassDeleted', { productId });
-      }
-    };
-
-    // Glass production updates with notifications
-    const handleGlassProductionUpdated = ({ order_number, item_id, component_id, updatedComponent }) => {
-      console.log("📢 Glass production update received:", order_number, item_id, component_id, updatedComponent);
-      handleOrderUpdate(order_number, item_id, component_id, updatedComponent, updatedComponent?.status);
-      
-      // Add notification
-      if (notificationRef.current) {
-        notificationRef.current.addNotification('glassProductionUpdated', {
-          order_number,
-          item_id,
-          component_id,
-          updatedComponent
-        });
-      }
-    };
-
-    // Glass stock adjustments with notifications
-    const handleGlassStockAdjusted = ({ dataCode, newStock }) => {
-      console.log("📢 Glass stock adjustment received:", dataCode, newStock);
-
-      const masterData = getLocalStorageData('glassMaster') || [];
-      const updatedData = masterData.map((p) =>
-        p.data_code === dataCode ? { ...p, available_stock: newStock } : p
-      );
-
-      handleStockUpdate(updatedData);
-      localStorage.setItem("glassMaster", JSON.stringify(updatedData));
-
-      // Add notification
-      if (notificationRef.current) {
-        notificationRef.current.addNotification('glassStockAdjusted', { dataCode, newStock });
-      }
-    };
-
-    // Glass negative adjustments with notifications
-    const handleGlassNegativeAdjustmentUpdated = ({
-      order_number,
-      item_id,
-      component_id,
-      updatedComponent,
-      adjustmentSummary,
-      itemChanges,
-      orderChanges
-    }) => {
-      console.log("📢 Glass negative adjustment update received:", {
-        order_number,
-        component: updatedComponent,
-        summary: adjustmentSummary
-      });
-
-      handleOrderUpdate(
-        order_number,
-        item_id,
-        component_id,
-        updatedComponent,
-        updatedComponent?.status,
-        itemChanges,
-        orderChanges
-      );
-
-      // Add notification
-      if (notificationRef.current) {
-        notificationRef.current.addNotification('glassNegativeAdjustmentUpdated', {
-          order_number,
-          adjustmentSummary
-        });
-      }
-    };
-
-    // Glass dispatch updates with notifications
-    const handleGlassDispatchUpdated = ({
-      order_number,
-      item_id,
-      component_id,
-      updatedComponent,
-      itemChanges,
-      orderChanges
-    }) => {
-      console.log("📦 Glass dispatch update received:", {
-        order_number,
-        component_id,
-        status: updatedComponent?.status
-      });
-
-      handleOrderUpdate(
-        order_number,
-        item_id,
-        component_id,
-        updatedComponent,
-        updatedComponent?.status,
-        itemChanges,
-        orderChanges
-      );
-
-      // Add notification
-      if (notificationRef.current) {
-        notificationRef.current.addNotification('glassDispatchUpdated', {
-          order_number,
-          component_id
-        });
-      }
-    };
-
-    // Glass rollback updates with notifications
-    const handleGlassRollbackUpdated = ({
-      order_number,
-      item_id,
-      component_id,
-      updatedComponent,
-      itemChanges,
-      orderChanges
-    }) => {
-      console.log("🔄 Glass rollback update received:", {
-        order_number,
-        component_id,
-        status: updatedComponent?.status
-      });
-
-      handleOrderUpdate(
-        order_number,
-        item_id,
-        component_id,
-        updatedComponent,
-        updatedComponent?.status,
-        itemChanges,
-        orderChanges
-      );
-
-      // Add notification
-      if (notificationRef.current) {
-        notificationRef.current.addNotification('glassRollbackUpdated', {
-          order_number,
-          component_id
-        });
-      }
-    };
-
-    // Register event listeners
-    socket.on("glassStockUpdated", handleGlassStockUpdated);
-    socket.on("glassAdded", handleGlassAdded);
-    socket.on("glassUpdated", handleGlassUpdated);
-    socket.on("glassDeleted", handleGlassDeleted);
-    socket.on("glassProductionUpdated", handleGlassProductionUpdated);
-    socket.on("glassStockAdjusted", handleGlassStockAdjusted);
-    socket.on("glassNegativeAdjustmentUpdated", handleGlassNegativeAdjustmentUpdated);
-    socket.on("glassDispatchUpdated", handleGlassDispatchUpdated);
-    socket.on("glassRollbackUpdated", handleGlassRollbackUpdated);
-
-    return () => {
-      // Clean up event listeners
-      socket.off("joinedProduction");
-      socket.off("glassStockUpdated", handleGlassStockUpdated);
-      socket.off("glassAdded", handleGlassAdded);
-      socket.off("glassUpdated", handleGlassUpdated);
-      socket.off("glassDeleted", handleGlassDeleted);
-      socket.off("glassProductionUpdated", handleGlassProductionUpdated);
-      socket.off("glassStockAdjusted", handleGlassStockAdjusted);
-      socket.off("glassNegativeAdjustmentUpdated", handleGlassNegativeAdjustmentUpdated);
-      socket.off("glassDispatchUpdated", handleGlassDispatchUpdated);
-      socket.off("glassRollbackUpdated", handleGlassRollbackUpdated);
-    };
-  }, [socket]);
-
   const handleOrderUpdate = useCallback(
     (
       orderNumber,
@@ -345,16 +114,7 @@ const GlassDashboard = ({ isEmbedded = false }) => {
       itemChanges = {},
       orderChanges = {}
     ) => {
-      console.log("🔄 Order update received:", {
-        orderNumber,
-        itemId,
-        componentId,
-        updatedComponent,
-        newStatus,
-        itemChanges,
-        orderChanges,
-      });
-
+      
       const team = "glass";
       const STORAGE_KEY = getStorageKey(team);
       let allOrders = getLocalStorageData(STORAGE_KEY) || [];
@@ -405,6 +165,277 @@ const GlassDashboard = ({ isEmbedded = false }) => {
 
     console.log('Dashboard: Stock updated and synced');
   }, []);
+
+  // Socket event handlers with proper notification triggering
+  useEffect(() => {
+    if (!socket) {
+      console.warn('Socket not available');
+      return;
+    }
+
+    console.log('🔌 Setting up socket listeners...');
+
+    // Join single production room
+    socket.emit("joinProduction");
+
+    socket.on("joinedProduction", ({ message }) => {
+      console.log("✅ Production room joined:", message);
+    });
+
+    // Glass-specific stock updates
+    const handleGlassStockUpdated = ({ data_code, newStock }) => {
+      console.log("📦 Glass stock updated:", data_code, newStock);
+      
+      setGlobalState(prev => {
+        const currentGlass = prev.allProducts.find(g => g.data_code === data_code);
+        if (!currentGlass || currentGlass.available_stock === newStock) return prev;
+
+        const updatedProducts = prev.allProducts.map(g =>
+          g.data_code === data_code ? { ...g, available_stock: newStock } : g
+        );
+        localStorage.setItem("glassMaster", JSON.stringify(updatedProducts));
+
+        return {
+          ...prev,
+          allProducts: updatedProducts,
+          dataVersion: prev.dataVersion + 1
+        };
+      });
+    };
+
+    // Glass master CRUD operations with notifications
+    const handleGlassAdded = (newGlass) => {
+      console.log("📦 Glass added:", newGlass);
+      
+      setGlobalState(prev => {
+        const updatedProducts = [...prev.allProducts, newGlass];
+        localStorage.setItem("glassMaster", JSON.stringify(updatedProducts));
+        return {
+          ...prev,
+          allProducts: updatedProducts,
+          dataVersion: prev.dataVersion + 1
+        };
+      });
+      
+      // Trigger notification
+      setTimeout(() => {
+        triggerNotification('glassAdded', newGlass);
+      }, 100); // Small delay to ensure ref is available
+    };
+
+    const handleGlassUpdated = (updatedGlass) => {
+      console.log("🔄 Glass updated:", updatedGlass);
+      
+      setGlobalState(prev => {
+        const updatedProducts = prev.allProducts.map(p =>
+          p.data_code === updatedGlass.data_code ? updatedGlass : p
+        );
+        localStorage.setItem("glassMaster", JSON.stringify(updatedProducts));
+
+        return {
+          ...prev,
+          allProducts: updatedProducts,
+          dataVersion: prev.dataVersion + 1
+        };
+      });
+
+      // Trigger notification
+      setTimeout(() => {
+        triggerNotification('glassUpdated', updatedGlass);
+      }, 100);
+    };
+
+    const handleGlassDeleted = ({ productId }) => {
+      console.log("🗑️ Glass deleted:", productId);
+      
+      setGlobalState(prev => {
+        const updatedProducts = prev.allProducts.filter(g => g.data_code !== productId);
+        localStorage.setItem("glassMaster", JSON.stringify(updatedProducts));
+
+        return {
+          ...prev,
+          allProducts: updatedProducts,
+          dataVersion: prev.dataVersion + 1
+        };
+      });
+
+      // Trigger notification
+      setTimeout(() => {
+        triggerNotification('glassDeleted', { productId });
+      }, 100);
+    };
+
+    // Glass production updates with notifications
+    const handleGlassProductionUpdated = ({ order_number, item_id, component_id, updatedComponent }) => {
+      console.log("📢 Glass production update received:", { order_number, item_id, component_id, updatedComponent });
+      
+      handleOrderUpdate(order_number, item_id, component_id, updatedComponent, updatedComponent?.status);
+      
+      // Trigger notification
+      setTimeout(() => {
+        triggerNotification('glassProductionUpdated', {
+          order_number,
+          item_id,
+          component_id,
+          updatedComponent
+        });
+      }, 100);
+    };
+
+    // Glass stock adjustments with notifications
+   const handleGlassStockAdjusted = ({ dataCode, newStock }) => {
+  console.log("📢 Glass stock adjustment received:", { dataCode, newStock });
+
+  const masterData = getLocalStorageData('glassMaster') || [];
+  
+  // Add array check before using map
+  if (!Array.isArray(masterData)) {
+    console.warn('Master data is not an array:', masterData);
+    return;
+  }
+  
+  const updatedData = masterData.map((p) =>
+    p.data_code === dataCode ? { ...p, available_stock: newStock } : p
+  );
+
+  handleStockUpdate(updatedData);
+  localStorage.setItem("glassMaster", JSON.stringify(updatedData));
+
+  // Trigger notification
+  setTimeout(() => {
+    triggerNotification('glassStockAdjusted', { dataCode, newStock });
+  }, 100);
+};
+    // Glass negative adjustments with notifications
+    const handleGlassNegativeAdjustmentUpdated = ({
+      order_number,
+      item_id,
+      component_id,
+      updatedComponent,
+      adjustmentSummary,
+      itemChanges,
+      orderChanges
+    }) => {
+      console.log("📢 Glass negative adjustment update received:", {
+        order_number,
+        component: updatedComponent,
+        summary: adjustmentSummary
+      });
+
+      handleOrderUpdate(
+        order_number,
+        item_id,
+        component_id,
+        updatedComponent,
+        updatedComponent?.status,
+        itemChanges,
+        orderChanges
+      );
+
+      // Trigger notification
+      setTimeout(() => {
+        triggerNotification('glassNegativeAdjustmentUpdated', {
+          order_number,
+          adjustmentSummary
+        });
+      }, 100);
+    };
+
+    // Glass dispatch updates with notifications
+    const handleGlassDispatchUpdated = ({
+      order_number,
+      item_id,
+      component_id,
+      updatedComponent,
+      itemChanges,
+      orderChanges
+    }) => {
+      console.log("📦 Glass dispatch update received:", {
+        order_number,
+        component_id,
+        status: updatedComponent?.status
+      });
+
+      handleOrderUpdate(
+        order_number,
+        item_id,
+        component_id,
+        updatedComponent,
+        updatedComponent?.status,
+        itemChanges,
+        orderChanges
+      );
+
+      // Trigger notification
+      setTimeout(() => {
+        triggerNotification('glassDispatchUpdated', {
+          order_number,
+          component_id
+        });
+      }, 100);
+    };
+
+    // Glass rollback updates with notifications
+    const handleGlassRollbackUpdated = ({
+      order_number,
+      item_id,
+      component_id,
+      updatedComponent,
+      itemChanges,
+      orderChanges
+    }) => {
+      console.log("🔄 Glass rollback update received:", {
+        order_number,
+        component_id,
+        status: updatedComponent?.status
+      });
+
+      handleOrderUpdate(
+        order_number,
+        item_id,
+        component_id,
+        updatedComponent,
+        updatedComponent?.status,
+        itemChanges,
+        orderChanges
+      );
+
+      // Trigger notification
+      setTimeout(() => {
+        triggerNotification('glassRollbackUpdated', {
+          order_number,
+          component_id
+        });
+      }, 100);
+    };
+
+    // Register event listeners
+    console.log('🔗 Registering socket event listeners...');
+    socket.on("glassStockUpdated", handleGlassStockUpdated);
+    socket.on("glassAdded", handleGlassAdded);
+    socket.on("glassUpdated", handleGlassUpdated);
+    socket.on("glassDeleted", handleGlassDeleted);
+    socket.on("glassProductionUpdated", handleGlassProductionUpdated);
+    socket.on("glassStockAdjusted", handleGlassStockAdjusted);
+    socket.on("glassNegativeAdjustmentUpdated", handleGlassNegativeAdjustmentUpdated);
+    socket.on("glassDispatchUpdated", handleGlassDispatchUpdated);
+    socket.on("glassRollbackUpdated", handleGlassRollbackUpdated);
+
+    return () => {
+      console.log('🔌 Cleaning up socket event listeners...');
+      // Clean up event listeners
+      socket.off("joinedProduction");
+      socket.off("glassStockUpdated", handleGlassStockUpdated);
+      socket.off("glassAdded", handleGlassAdded);
+      socket.off("glassUpdated", handleGlassUpdated);
+      socket.off("glassDeleted", handleGlassDeleted);
+      socket.off("glassProductionUpdated", handleGlassProductionUpdated);
+      socket.off("glassStockAdjusted", handleGlassStockAdjusted);
+      socket.off("glassNegativeAdjustmentUpdated", handleGlassNegativeAdjustmentUpdated);
+      socket.off("glassDispatchUpdated", handleGlassDispatchUpdated);
+      socket.off("glassRollbackUpdated", handleGlassRollbackUpdated);
+    };
+  }, [socket, handleOrderUpdate, handleStockUpdate, triggerNotification]); // Added dependencies
 
   const handleOrdersUpdate = useCallback((newOrders) => {
     setGlobalState(prev => ({

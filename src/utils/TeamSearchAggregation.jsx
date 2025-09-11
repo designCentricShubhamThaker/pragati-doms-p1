@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { Download } from 'lucide-react';
 
 const TeamSearchAggregation = ({
   teamType,
@@ -6,7 +7,8 @@ const TeamSearchAggregation = ({
   setSearchTerm,
   aggregatedItems,
   setCurrentPage,
-  onAddStock
+  onAddStock,
+  onDownloadExcel
 }) => {
 
   const [glassMasterData, setGlassMasterData] = useState([]);
@@ -17,7 +19,6 @@ const TeamSearchAggregation = ({
       if (stored && stored !== 'undefined' && stored !== 'null') {
         const data = JSON.parse(stored);
         setGlassMasterData(data);
-        // console.log('TeamSearchAggregation: glassMaster loaded/updated, count:', data.length);
       } else {
         setGlassMasterData([]);
       }
@@ -58,12 +59,6 @@ const TeamSearchAggregation = ({
     window.removeEventListener('glassMasterUpdated', handleGlassMasterUpdate);
   };
 }, []);
-
-  // useEffect(() => {
-  //   if (Object.keys(aggregatedItems).length > 0) {
-  //     loadGlassMasterData();
-  //   }
-  // }, [aggregatedItems]);
 
   const searchResults = useMemo(() => {
     if (!searchTerm.trim()) return [];
@@ -115,7 +110,7 @@ const TeamSearchAggregation = ({
   return (
     <div className="mb-6 space-y-3">
       <div className="flex items-center gap-3">
-        <div className="relative w-[90%]">
+        <div className="relative w-[75%]">
           <input
             type="text"
             value={searchTerm}
@@ -149,7 +144,7 @@ const TeamSearchAggregation = ({
           )}
         </div>
 
-        <div className="w-[10%]">
+        <div className="flex gap-2 w-[25%]">
           <button
             onClick={() => {
               // Find the first exact match from searchResults
@@ -165,9 +160,17 @@ const TeamSearchAggregation = ({
                 });
               }
             }}
-            className="w-full px-4 py-2 bg-orange-800 text-white text-sm font-medium rounded-md hover:bg-orange-600 focus:outline-none transition-colors duration-200"
+            className="flex-1 px-3 py-2 bg-orange-800 text-white text-sm font-medium rounded-md hover:bg-orange-600 focus:outline-none transition-colors duration-200"
           >
             Add Stock
+          </button>
+
+          <button
+            onClick={onDownloadExcel}
+            className="flex items-center justify-center px-3 py-2 bg-green-600 text-white text-sm font-medium rounded-md hover:bg-green-700 focus:outline-none transition-colors duration-200"
+            title="Download current data as Excel"
+          >
+            <Download size={16} />
           </button>
         </div>
       </div>

@@ -437,10 +437,10 @@ const renderTeamCheck = (glass) => {
                         </div>
                       )}
 
-                      {/* UPDATED: Team Check Column for in_progress */}
+                      {/* Team Check Column for in_progress */}
                       {orderType === "in_progress" && renderTeamCheck(glass)}
 
-                      {/* UPDATED: Edit Column with simplified logic */}
+                      {/* Edit Column with simplified logic */}
                       <div className="text-center">
                         {isFirstRowOfItem && glass && hasDecorationForTeam(glass, teamName) && (
                           <button
@@ -468,24 +468,39 @@ const renderTeamCheck = (glass) => {
         })}
       </div>
 
+      {/* Mobile View - Fixed Layout */}
       <div className="xl:hidden space-y-4">
         {currentOrders.map((order) => (
           <div
             key={`mobile-order-${order.order_number}`}
             className={`bg-white rounded-lg shadow-sm border ${colors.border} overflow-hidden`}
           >
+            {/* Order Header */}
             <div className={`bg-gradient-to-r ${colors.header} px-4 py-3`}>
-              <div className="flex items-center justify-between">
+              <div className="grid grid-cols-3 gap-4 items-center">
                 <div>
                   <h3 className="text-white font-semibold text-sm">{order.order_number}</h3>
-                  <p className="text-white text-opacity-80 text-xs">{order.customer_name}</p>
+                  <p className="text-white text-opacity-80 text-xs">{order.manager_name}</p>
                 </div>
-                <div className="text-white text-opacity-80 text-xs">
-                  {order.order_totals?.completion_percentage ?? 0}%
+                <div className="text-center">
+                  <button
+                    onClick={() => handleSearchCustomer?.(order.customer_name)}
+                    className="text-white text-opacity-90 hover:text-white hover:underline text-sm font-medium transition-colors"
+                    title="Search by customer name"
+                  >
+                    {order.customer_name}
+                  </button>
+                </div>
+                <div className="text-right">
+                  <div className="text-white text-opacity-80 text-xs">Progress</div>
+                  <div className="text-white font-semibold text-sm">
+                    {order.order_totals?.completion_percentage ?? 0}%
+                  </div>
                 </div>
               </div>
             </div>
 
+            {/* Items */}
             {order.items?.map((item, itemIndex) => {
               const glasses = item.components?.filter(c => c.component_type === "glass") || [];
               const teamGlasses = glasses.filter(g => g.is_deco && hasDecorationForTeam(g, teamName));
@@ -495,11 +510,13 @@ const renderTeamCheck = (glass) => {
 
               return (
                 <div key={item._id} className={bgColor}>
-                  <div className="px-4 py-3">
-                    <div className="flex items-center justify-between mb-2">
+                  {/* Item Header */}
+                  <div className="px-4 py-2 border-b border-gray-200">
+                    <div className="flex items-center justify-between">
                       <h4 className={`font-medium ${colors.text} text-sm`}>{item.item_name}</h4>
                       <div className="flex gap-2">
-                        {canDispatchComponent(teamGlasses[0], teamName) && (
+                        {/* Dispatch Button - only show for first glass */}
+                        {orderType === 'ready_to_dispatch' && canDispatchComponent(teamGlasses[0]) && (
                           <button
                             onClick={() => handleDispatchClick(order, item, teamGlasses[0])}
                             className="px-3 py-1 bg-green-600 text-white text-xs rounded hover:bg-green-700"
@@ -507,6 +524,7 @@ const renderTeamCheck = (glass) => {
                             Dispatch
                           </button>
                         )}
+                        {/* Edit Button */}
                         <button
                           onClick={() => handleEditClick(order, item)}
                           disabled={!canEditOrder(order)}
@@ -523,21 +541,24 @@ const renderTeamCheck = (glass) => {
                         </button>
                       </div>
                     </div>
+                  </div>
 
+                  {/* Glass Components */}
+                  <div className="px-4 py-3 space-y-3">
                     {teamGlasses.map((glass) => {
                       const teamDecoration = glass.decorations?.[teamName];
                       const remainingQty = getRemainingQty(glass);
-                      const status = teamDecoration?.status;
                       const rowId = `${order.order_number}-${item.item_name}-${glass.name}-${teamName}`;
                       const isExpanded = expandedRows.has(rowId);
 
                       return (
                         <div
                           key={`${glass.component_id}-${teamName}`}
-                          className="bg-white rounded-lg p-3 shadow-sm mt-2"
+                          className="bg-white rounded-lg p-3 shadow-sm border border-gray-100"
                         >
+                          {/* Glass Header */}
                           <div className="flex items-center justify-between mb-2">
-                            <div>
+                            <div className="flex-1">
                               <div className="flex items-center gap-1">
                                 <p className="font-medium text-gray-900 text-sm">
                                   {glass.name || 'N/A'} ({teamDisplayName})
@@ -554,26 +575,9 @@ const renderTeamCheck = (glass) => {
                                   </button>
                                 )}
                               </div>
-                              <div className="text-xs text-gray-600 mt-1">
-                                {teamDisplayName} Qty:{" "}
-                                <span className={`font-medium ${colors.textDark}`}>
-                                  {teamDecoration?.qty ?? 'N/A'}
-                                </span>{" "}
-                                | Remaining:{" "}
-                                <span className={`font-medium ${remainingQty === 0 ? "text-green-600" : "text-orange-700"}`}>
-                                  {remainingQty}
-                                </span>
-                              </div>
-                              {/* UPDATED: Team Check for mobile */}
-                              <div className="text-xs mt-1">
-                                <span className="text-gray-500">Team Check:</span>{" "}
-                                <span className="font-medium">
-                                  {getSequenceWaitingMessage(glass, teamName)}
-                                </span>
-                              </div>
                             </div>
 
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 ml-2">
                               <div className="text-center">
                                 <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusStyle(glass)}`}>
                                   {formatStatusLabel(glass)}
@@ -582,56 +586,94 @@ const renderTeamCheck = (glass) => {
 
                               <button
                                 onClick={() => toggleRowExpansion(rowId)}
-                                className="p-1 text-gray-400 hover:text-gray-600"
+                                className="p-1 text-gray-400 hover:text-gray-600 flex-shrink-0"
                               >
                                 {isExpanded ? <EyeOff size={16} /> : <Eye size={16} />}
                               </button>
                             </div>
                           </div>
 
-                          {isExpanded && (
-                            <div className="pt-2 border-t border-gray-100 text-xs space-y-1">
+                          {/* Glass Details Grid */}
+                          <div className="grid grid-cols-2 gap-3 text-xs">
+                            <div>
+                              <span className="text-gray-500">Quantity:</span>{" "}
+                              <span className={`font-medium ${colors.textDark}`}>
+                                {teamDecoration?.qty ?? 'N/A'}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-gray-500">Remaining:</span>{" "}
+                              <span className={`font-medium ${remainingQty === 0 ? "text-green-600" : "text-orange-700"}`}>
+                                {remainingQty}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-gray-500">Weight:</span>{" "}
+                              <span className="font-medium text-red-900">{glass.weight ?? "N/A"}g</span>
+                            </div>
+                            <div>
+                              <span className="text-gray-500">Capacity:</span>{" "}
+                              <span className="font-medium text-red-900">{glass.capacity ?? "N/A"}</span>
+                            </div>
+                          </div>
+
+                          {/* Team Check and Approvals */}
+                          <div className="mt-2 grid grid-cols-1 gap-2 text-xs">
+                            {orderType === "in_progress" && (
                               <div>
-                                <span className="text-gray-500">Glass Weight:</span>{" "}
-                                {glass.weight ?? "N/A"}g
-                              </div>
-                              <div>
-                                <span className="text-gray-500">Glass Capacity:</span>{" "}
-                                {glass.capacity ?? "N/A"}
-                              </div>
-                              <div>
-                                <span className="text-gray-500">Neck Diameter:</span>{" "}
-                                {glass.neck_diameter ?? "N/A"}mm
-                              </div>
-                              <div>
-                                <span className="text-gray-500">{teamDisplayName} Inventory Used:</span>{" "}
-                                <span className="font-semibold text-blue-600">
-                                  {sumTrackingKey(teamDecoration?.tracking, "stock_used")}
+                                <span className="text-gray-500">Team Check:</span>{" "}
+                                <span className="font-medium">
+                                  {getSequenceWaitingMessage(glass, teamName)}
                                 </span>
                               </div>
-                              <div>
-                                <span className="text-gray-500">{teamDisplayName} Quantity Produced:</span>{" "}
-                                <span className="font-semibold text-green-600">
-                                  {sumTrackingKey(teamDecoration?.tracking, "quantity_produced")}
-                                </span>
-                              </div>
-                              <div>
-                                <span className="text-gray-500">Data Code:</span>{" "}
-                                {glass.data_code ?? "N/A"}
-                              </div>
-                              <div>
-                                <span className="text-gray-500">Deco Number:</span>{" "}
-                                {glass.deco_number ?? "N/A"}
-                              </div>
-                              <div>
-                                <span className="text-gray-500">Deco Sequence:</span>{" "}
-                                {glass.deco_sequence ?? "N/A"}
-                              </div>
+                            )}
+                            <div className="flex justify-between items-center">
                               <div>
                                 <span className="text-gray-500">Deco Approved:</span>{" "}
-                                <span className={glass.is_deco_approved ? "text-green-800" : "text-red-800"}>
-                                  {glass.is_deco_approved ? "Approved" : "Awaiting"}
+                                <span className={glass.is_deco_approved ? "text-green-800 font-medium" : "text-red-800 font-medium"}>
+                                  {glass.is_deco_approved ? "Yes" : "Pending"}
                                 </span>
+                              </div>
+                              <div className="text-right">
+                                {renderVehicleApproval(glass, order, item)}
+                              </div>
+                            </div>
+                          </div>
+
+                          {isExpanded && (
+                            <div className="pt-3 mt-3 border-t border-gray-100 text-xs space-y-2">
+                              <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                  <span className="text-gray-500">Neck Diameter:</span>{" "}
+                                  <span className="font-medium text-red-900">{glass.neck_diameter ?? "N/A"}mm</span>
+                                </div>
+                                <div>
+                                  <span className="text-gray-500">Data Code:</span>{" "}
+                                  <span className="font-medium">{glass.data_code ?? "N/A"}</span>
+                                </div>
+                                <div>
+                                  <span className="text-gray-500">Deco Number:</span>{" "}
+                                  <span className="font-medium">{glass.deco_number ?? "N/A"}</span>
+                                </div>
+                                <div>
+                                  <span className="text-gray-500">Deco Sequence:</span>{" "}
+                                  <span className="font-medium">{glass.deco_sequence ?? "N/A"}</span>
+                                </div>
+                              </div>
+                              
+                              <div className="grid grid-cols-1 gap-2 mt-2">
+                                <div>
+                                  <span className="text-gray-500">Inventory Used:</span>{" "}
+                                  <span className="font-semibold text-blue-600">
+                                    {sumTrackingKey(teamDecoration?.tracking, "stock_used")}
+                                  </span>
+                                </div>
+                                <div>
+                                  <span className="text-gray-500">Quantity Produced:</span>{" "}
+                                  <span className="font-semibold text-green-600">
+                                    {sumTrackingKey(teamDecoration?.tracking, "quantity_produced")}
+                                  </span>
+                                </div>
                               </div>
                             </div>
                           )}

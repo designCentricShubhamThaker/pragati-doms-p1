@@ -16,7 +16,8 @@ const SharedHeader = ({
   formatTimeMobile,
   notificationPanelRef,  // new
   teamName,              // new
-  teamConfig 
+  teamConfig ,
+  additionalHeaderContent   
 }) => {
   
   const headerClasses = showGradient 
@@ -72,6 +73,8 @@ const SharedHeader = ({
               teamConfig={teamConfig}
             />
           )}
+
+           {additionalHeaderContent && additionalHeaderContent}
           </div>
         </div>
       </div>

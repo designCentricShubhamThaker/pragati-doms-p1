@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Package } from 'lucide-react';
+import { Package, Calendar, X } from 'lucide-react';
 import StockAvailabilityDialog from './components/StockAvailabilityDialog.jsx';
 import OrderTable from "./components/OrderTable.jsx";
 import UpdateBottleQty from './components/UpdateBottleQty.jsx';
@@ -26,6 +26,11 @@ const GlassOrders = ({
   const [expandedRows, setExpandedRows] = useState(new Set());
   const [searchTerm, setSearchTerm] = useState('');
 
+  // Date filter state
+  const [showDateFilter, setShowDateFilter] = useState(false);
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+
   // Modal states
   const [showModal, setShowModal] = useState(false);
   const [showVehicleDetails, setShowVehicleDetails] = useState(false);
@@ -38,7 +43,7 @@ const GlassOrders = ({
   const [addStockGlassDetails, setAddStockGlassDetails] = useState(null);
   const [dispatchOrder, setDispatchOrder] = useState(false)
   const [rollback, setRollback] = useState(false)
-    const [selectHandleNegativeValue , setSetlectHandleNegative] = useState(null);
+  const [selectHandleNegativeValue, setSetlectHandleNegative] = useState(null);
 
   const ordersPerPage = 5;
   const TEAM = 'glass';
@@ -55,7 +60,6 @@ const GlassOrders = ({
     );
   }, []);
 
-
   const getRemainingQty = useCallback((component) => {
     if (!component || !component.qty) return 'N/A';
     if (component.status === 'ready_to_dispatch') return 0;
@@ -66,7 +70,6 @@ const GlassOrders = ({
 
     return Math.max(0, remaining);
   }, []);
-
 
   const glassLookupMap = useMemo(() => {
     if (!glassMasterReady || allProducts.length === 0) {
@@ -86,6 +89,125 @@ const GlassOrders = ({
     const key = `${glassComponent.name?.toLowerCase()}_${glassComponent.capacity}_${glassComponent.weight}_${glassComponent.neck_diameter}`;
     return glassLookupMap.get(key) ?? 0;
   }, [glassLookupMap, glassMasterReady, allProducts.length]);
+
+  // Date filtering function
+  const filterOrdersByDate = useCallback((orders) => {
+    if (!startDate && !endDate) return orders;
+    
+    return orders.filter(order => {
+      if (!order.created_at) return true; // Keep orders without date
+      
+      const orderDate = new Date(order.created_at);
+      const start = startDate ? new Date(startDate) : null;
+      const end = endDate ? new Date(endDate) : null;
+      
+      if (start && end) {
+        return orderDate >= start && orderDate <= end;
+      } else if (start) {
+        return orderDate >= start;
+      } else if (end) {
+        return orderDate <= end;
+      }
+      
+      return true;
+    });
+  }, [startDate, endDate]);
+
+   const filteredOrders = useMemo(() => {
+    let filtered = Array.isArray(currentOrders) ? [...currentOrders] : [];
+
+    // Apply date filtering first
+    filtered = filterOrdersByDate(filtered);
+
+    if (!searchTerm.trim()) return filtered;
+
+    const searchLower = searchTerm.toLowerCase();
+    let results = [];
+
+    filtered?.forEach(order => {
+      if (
+        order.order_number?.toLowerCase().includes(searchLower) ||
+        order.customer_name?.toLowerCase().includes(searchLower) ||
+        order.manager_name?.toLowerCase().includes(searchLower)
+      ) {
+        results.push(order);
+        return;
+      }
+
+      order.items?.forEach(item => {
+        if (item.item_name?.toLowerCase().includes(searchLower)) {
+          results.push({ ...order, items: [item] });
+          return;
+        }
+
+        const matchedComponents = item.components?.filter(c =>
+          c.name?.toLowerCase().includes(searchLower)
+        ) || [];
+
+        if (matchedComponents.length > 0) {
+          results.push({
+            ...order,
+            items: [{ ...item, components: matchedComponents }]
+          });
+        }
+      });
+    });
+
+    return results;
+  }, [currentOrders, searchTerm, filterOrdersByDate]);
+
+  // Excel Download Function
+  const downloadExcel = useCallback(() => {
+    try {
+      // Create CSV content
+      let csvContent = "Order Number,Manager,Customer,Item Name,Glass Name,Weight,Capacity,Neck Diameter,Glass Qty,Remaining Qty,Status,Created At,Priority\n";
+      
+      filteredOrders.forEach(order => {
+        order.items?.forEach(item => {
+          const glasses = item.components?.filter(c => 
+            c.component_type === "glass"
+          ) || [];
+          
+          glasses.forEach(glass => {
+            const remainingQty = getRemainingQty(glass);
+            const status = glass.status || 'N/A';
+            
+            const row = [
+              order.order_number || '',
+              order.manager_name || '',
+              order.customer_name || '',
+              item.item_name || '',
+              glass.name || '',
+              glass.weight || '',
+              glass.capacity || '',
+              glass.neck_diameter || '',
+              glass.qty || 0,
+              remainingQty,
+              status,
+              order.created_at || '',
+              order.priority || 'Normal'
+            ].map(field => `"${String(field).replace(/"/g, '""')}"`).join(',');
+            
+            csvContent += row + "\n";
+          });
+        });
+      });
+
+      // Create and download file
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement("a");
+      const url = URL.createObjectURL(blob);
+      link.setAttribute("href", url);
+      link.setAttribute("download", `glass_${orderType}_orders_${new Date().toISOString().split('T')[0]}.csv`);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (error) {
+      console.error('Error downloading Excel:', error);
+      alert('Error downloading file. Please try again.');
+    }
+  }, [filteredOrders, orderType, getRemainingQty]);
 
   const handleClose = useCallback(() => {
     setShowModal(false);
@@ -176,8 +298,6 @@ const GlassOrders = ({
           setLoading(false);
         });
 
-   
-
       } catch (error) {
         console.error("Error in dispatch operation:", error);
         setError(`Dispatch failed: ${error.message}`);
@@ -193,16 +313,13 @@ const GlassOrders = ({
     ]
   );
 
-   const handleNegativeValueModal = useCallback(() => {
+  const handleNegativeValueModal = useCallback(() => {
     setSetlectHandleNegative("rollBack");
     setShowStockDialog(false);
     setShowModal(true);
   }, []);
 
-
-
   const aggregatedglasss = useMemo(() => {
-
     if (!glassMasterReady || currentOrders.length === 0) {
       return {};
     }
@@ -241,9 +358,9 @@ const GlassOrders = ({
               status: glass.status,
               customer_name: order.customer_name,
               manager_name: order.manager_name,
-              completed_qty: glass.completed_qty || 0, // Add this to track progress
-              item_id: item.item_id, // Add this for better tracking
-              component_id: glass.component_id // Add this for better tracking
+              completed_qty: glass.completed_qty || 0,
+              item_id: item.item_id,
+              component_id: glass.component_id
             });
           }
         });
@@ -257,47 +374,11 @@ const GlassOrders = ({
     getRemainingQty,
     glassMasterReady,
     dataVersion,
-    expandedRows.size //
+    expandedRows.size
   ]);
 
-  // Filtered orders based on search
-  const filteredOrders = useMemo(() => {
-    if (!searchTerm.trim()) return Array.isArray(currentOrders) ? currentOrders : [];
-
-    const searchLower = searchTerm.toLowerCase();
-    let results = [];
-
-    currentOrders?.forEach(order => {
-      if (
-        order.order_number?.toLowerCase().includes(searchLower) ||
-        order.customer_name?.toLowerCase().includes(searchLower) ||
-        order.manager_name?.toLowerCase().includes(searchLower)
-      ) {
-        results.push(order);
-        return;
-      }
-
-      order.items?.forEach(item => {
-        if (item.item_name?.toLowerCase().includes(searchLower)) {
-          results.push({ ...order, items: [item] });
-          return;
-        }
-
-        const matchedComponents = item.components?.filter(c =>
-          c.name?.toLowerCase().includes(searchLower)
-        ) || [];
-
-        if (matchedComponents.length > 0) {
-          results.push({
-            ...order,
-            items: [{ ...item, components: matchedComponents }]
-          });
-        }
-      });
-    });
-
-    return results;
-  }, [currentOrders, searchTerm]);
+  // Enhanced filtered orders with date filtering
+ 
 
   const paginatedOrders = useMemo(() => {
     const indexOfLastOrder = currentPage * ordersPerPage;
@@ -306,7 +387,6 @@ const GlassOrders = ({
   }, [filteredOrders, currentPage, ordersPerPage]);
 
   const totalPages = Math.ceil(filteredOrders.length / ordersPerPage);
-
 
   const getStatusStyle = useCallback((status) => {
     if (!status) return 'text-gray-500';
@@ -332,7 +412,6 @@ const GlassOrders = ({
       .toLowerCase()
       .replace(/\b\w/g, (c) => c.toUpperCase());
   }, []);
-
 
   const handleAddStock = useCallback((glassDetails) => {
     setSearchTerm(glassDetails.name);
@@ -362,8 +441,6 @@ const GlassOrders = ({
   const handlePageChange = useCallback((page) => {
     setCurrentPage(page);
   }, []);
-
-
 
   const handleEditClick = useCallback((order, item) => {
     setSelectedOrder(order);
@@ -396,8 +473,6 @@ const GlassOrders = ({
     setSelectedItem(null);
   }, []);
 
-
-
   const handleCopyGlassName = useCallback((componentName) => {
     setSearchTerm(componentName);
     setCurrentPage(1);
@@ -413,13 +488,10 @@ const GlassOrders = ({
     setCurrentPage(1);
   }, []);
 
-
-
- const handleLocalOrderUpdate = useCallback((orderNumber, item_id, component_id, updatedComponent, newStatus , itemChanges = {},orderChanges = {}) => {
-    onOrderUpdate(orderNumber, item_id, component_id, updatedComponent, newStatus,itemChanges,orderChanges);
+  const handleLocalOrderUpdate = useCallback((orderNumber, item_id, component_id, updatedComponent, newStatus, itemChanges = {}, orderChanges = {}) => {
+    onOrderUpdate(orderNumber, item_id, component_id, updatedComponent, newStatus, itemChanges, orderChanges);
     handleClose();
   }, [onOrderUpdate, handleClose]);
-
 
   const handleVehicleDetails = useCallback((order, item, component) => {
     setSelectedOrder(order);
@@ -437,94 +509,93 @@ const GlassOrders = ({
   const handleRollback = useCallback((order, item, component) => {
     setSelectedOrder(order);
     setSelectedItem(item);
-     setSelectedComponent(component);
+    setSelectedComponent(component);
     setRollback(true);
   }, []);
 
- const handleRollbackOrder = useCallback(
-  async () => {
-    try {
-      if (!selectedOrder || !selectedItem || !selectedComponent) {
-        console.error("❌ Missing rollback selection");
-        return;
-      }
-
-      setLoading(true);
-      setError(null);
-
-      const rollbackPayload = {
-        order_number: selectedOrder.order_number,
-        item_id: selectedItem.item_id,
-        component_id: selectedComponent.component_id,
-        updateData: {
-          quantity_to_rollback: selectedComponent.completed_qty, 
-          reason: "Removing from Orders and Add into Stock",
-          rollback_by: "glass_admin",
-        },
-        component_data_code: selectedComponent.data_code,
-      };
-
-      console.log("🔄 Starting rollback process...", rollbackPayload);
-
-      // Listen for vehicle clearing update
-      socket.once("glassVehicleUpdatedSelf", ({ order_number, item_id, component_id, updatedComponent }) => {
-        console.log("🚛 Vehicle details cleared:", updatedComponent);
-        onOrderUpdate(order_number, item_id, component_id, updatedComponent, updatedComponent?.status);
-      });
-
-      // Listen for rollback completion
-      socket.once("glassRollbackUpdatedSelf", ({ order_number, item_id, component_id, updatedComponent, itemChanges, orderChanges }) => {
-        console.log("✅ Rollback completed:", updatedComponent);
-        onOrderUpdate(order_number, item_id, component_id, updatedComponent, updatedComponent?.status, itemChanges, orderChanges);
-        setLoading(false);
-      });
-
-      // Listen for stock adjustment
-      socket.once("glassStockAdjustedSelf", ({ dataCode, newStock }) => {
-        console.log("📦 Stock adjusted:", dataCode, newStock);
-
-        const updatedProducts = allProducts.map(p =>
-          p.data_code === dataCode ? { ...p, available_stock: newStock } : p
-        );
-
-        onStockUpdate(updatedProducts);
-      });
-
-      // Listen for any errors
-      socket.once("glassRollbackError", ({ message }) => {
-        console.error("❌ Rollback error:", message);
-        setError(`Error rolling back order: ${message}`);
-        setLoading(false);
-      });
-
-      // Emit the rollback request
-      socket.emit("rollbackGlassProduction", rollbackPayload);
-
-      // Auto-close modal after a delay (optional)
-      setTimeout(() => {
-        if (!error) {
-          handleClose();
+  const handleRollbackOrder = useCallback(
+    async () => {
+      try {
+        if (!selectedOrder || !selectedItem || !selectedComponent) {
+          console.error("❌ Missing rollback selection");
+          return;
         }
-      }, 2000);
 
-    } catch (error) {
-      console.error("Error in rollback operation:", error);
-      setError(`Rollback failed: ${error.message}`);
-      setLoading(false);
-    }
-  },
-  [
-    selectedOrder,
-    selectedItem,
-    selectedComponent,
-    handleClose,
-    allProducts,
-    onStockUpdate,
-    onOrderUpdate,
-    error
-  ]
-);
+        setLoading(true);
+        setError(null);
 
+        const rollbackPayload = {
+          order_number: selectedOrder.order_number,
+          item_id: selectedItem.item_id,
+          component_id: selectedComponent.component_id,
+          updateData: {
+            quantity_to_rollback: selectedComponent.completed_qty,
+            reason: "Removing from Orders and Add into Stock",
+            rollback_by: "glass_admin",
+          },
+          component_data_code: selectedComponent.data_code,
+        };
+
+        console.log("🔄 Starting rollback process...", rollbackPayload);
+
+        socket.once("glassVehicleUpdatedSelf", ({ order_number, item_id, component_id, updatedComponent }) => {
+          console.log("🚛 Vehicle details cleared:", updatedComponent);
+          onOrderUpdate(order_number, item_id, component_id, updatedComponent, updatedComponent?.status);
+        });
+
+        socket.once("glassRollbackUpdatedSelf", ({ order_number, item_id, component_id, updatedComponent, itemChanges, orderChanges }) => {
+          console.log("✅ Rollback completed:", updatedComponent);
+          onOrderUpdate(order_number, item_id, component_id, updatedComponent, updatedComponent?.status, itemChanges, orderChanges);
+          setLoading(false);
+        });
+
+        socket.once("glassStockAdjustedSelf", ({ dataCode, newStock }) => {
+          console.log("📦 Stock adjusted:", dataCode, newStock);
+
+          const updatedProducts = allProducts.map(p =>
+            p.data_code === dataCode ? { ...p, available_stock: newStock } : p
+          );
+
+          onStockUpdate(updatedProducts);
+        });
+
+        socket.once("glassRollbackError", ({ message }) => {
+          console.error("❌ Rollback error:", message);
+          setError(`Error rolling back order: ${message}`);
+          setLoading(false);
+        });
+
+        socket.emit("rollbackGlassProduction", rollbackPayload);
+
+        setTimeout(() => {
+          if (!error) {
+            handleClose();
+          }
+        }, 2000);
+
+      } catch (error) {
+        console.error("Error in rollback operation:", error);
+        setError(`Rollback failed: ${error.message}`);
+        setLoading(false);
+      }
+    },
+    [
+      selectedOrder,
+      selectedItem,
+      selectedComponent,
+      handleClose,
+      allProducts,
+      onStockUpdate,
+      onOrderUpdate,
+      error
+    ]
+  );
+
+  const clearDateFilter = () => {
+    setStartDate('');
+    setEndDate('');
+    setCurrentPage(1);
+  };
 
   if (!glassMasterReady) {
     return (
@@ -560,6 +631,78 @@ const GlassOrders = ({
 
   return (
     <div className="p-5 max-w-full overflow-hidden">
+      {/* Date Filter and Controls */}
+      <div className="mb-4 flex flex-wrap gap-3 items-center justify-between">
+        <div className="flex gap-2 items-center">
+          <button
+            onClick={() => setShowDateFilter(!showDateFilter)}
+            className="flex items-center gap-2 px-3 py-2 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 transition-colors"
+          >
+            <Calendar size={16} />
+            Date Filter
+          </button>
+        </div>
+
+        {(startDate || endDate) && (
+          <div className="flex items-center gap-2 text-sm text-gray-600">
+            <span>Filtered by date:</span>
+            {startDate && <span className="bg-blue-100 px-2 py-1 rounded">{startDate}</span>}
+            {startDate && endDate && <span>to</span>}
+            {endDate && <span className="bg-blue-100 px-2 py-1 rounded">{endDate}</span>}
+            <button
+              onClick={clearDateFilter}
+              className="text-red-600 hover:text-red-800 ml-2"
+            >
+              <X size={16} />
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Date Filter Panel */}
+      {showDateFilter && (
+        <div className="mb-6 bg-gray-50 p-4 rounded-lg border">
+          <div className="flex flex-wrap gap-4 items-end">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                From Date
+              </label>
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => {
+                  setStartDate(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                To Date
+              </label>
+              <input
+                type="date"
+                value={endDate}
+                onChange={(e) => {
+                  setEndDate(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={clearDateFilter}
+                className="px-3 py-2 bg-gray-500 text-white text-sm rounded-md hover:bg-gray-600 transition-colors"
+              >
+                Clear
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <TeamSearchAggregation
         teamType="glass"
         searchTerm={searchTerm}
@@ -567,6 +710,7 @@ const GlassOrders = ({
         aggregatedItems={aggregatedglasss}
         setCurrentPage={setCurrentPage}
         onAddStock={handleAddStock}
+        onDownloadExcel={downloadExcel}
       />
 
       <OrderTable
@@ -606,7 +750,7 @@ const GlassOrders = ({
         handleStockQuantityChange={handleStockQuantityChange}
         handleStockDialogClose={handleStockDialogClose}
         handleStockNo={handleStockNo}
-         handleNegativeValueModal={handleNegativeValueModal}
+        handleNegativeValueModal={handleNegativeValueModal}
         handleStockYes={handleStockYes}
         getRemainingQty={getRemainingQty}
         setStockQuantities={setStockQuantities}
@@ -625,7 +769,7 @@ const GlassOrders = ({
           searchTerm={searchTerm}
           getAvailableStock={getAvailableStock}
           onStockUpdate={onStockUpdate}
-          mode = {selectHandleNegativeValue}
+          mode={selectHandleNegativeValue}
         />
       )}
 
@@ -666,7 +810,7 @@ const GlassOrders = ({
           orderData={selectedOrder}
           itemData={selectedItem}
           onUpdate={handleLocalOrderUpdate}
-           onConfirm={handleRollbackOrder}
+          onConfirm={handleRollbackOrder}
         />
       )}
     </div>

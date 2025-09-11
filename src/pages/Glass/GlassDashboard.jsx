@@ -1,18 +1,21 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Menu, ChevronLeft } from 'lucide-react';
 import { FaPowerOff } from "react-icons/fa";
 import SharedHeader from '../../components/SharedHeader.jsx';
 import { useCurrentDateTime } from '../../hooks/useCurrentDateTime.jsx';
 import GlassMaster from './GlassMaster.jsx';
 import GlassOrders from './GlassOrders.jsx';
+
 import { getSocket } from '../../context/SocketContext.jsx';
 import { getLocalStorageData, getOrdersByStatus, getStorageKey, updateOrderInLocalStorage } from '../../utils/orderStorage.jsx';
+import GlassNotificationPanel from './components/GlassNotificationPanel.jsx';
 
 const GlassDashboard = ({ isEmbedded = false }) => {
   const [activeMenuItem, setActiveMenuItem] = useState('liveOrders');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { currentDateTime, formatTime, formatTimeMobile } = useCurrentDateTime();
-  const socket = getSocket()
+  const socket = getSocket();
+  const notificationRef = useRef(null);
 
   const [globalState, setGlobalState] = useState({
     allProducts: [],
@@ -83,7 +86,6 @@ const GlassDashboard = ({ isEmbedded = false }) => {
     initializeData();
   }, [fetchGlassMaster]);
 
-
   useEffect(() => {
     if (!socket) return;
 
@@ -113,7 +115,7 @@ const GlassDashboard = ({ isEmbedded = false }) => {
       });
     };
 
-    // Glass master CRUD operations
+    // Glass master CRUD operations with notifications
     const handleGlassAdded = (newGlass) => {
       console.log("ADDED");
       setGlobalState(prev => {
@@ -125,6 +127,11 @@ const GlassDashboard = ({ isEmbedded = false }) => {
           dataVersion: prev.dataVersion + 1
         };
       });
+      
+      // Add notification
+      if (notificationRef.current) {
+        notificationRef.current.addNotification('glassAdded', newGlass);
+      }
     };
 
     const handleGlassUpdated = (updatedGlass) => {
@@ -140,6 +147,11 @@ const GlassDashboard = ({ isEmbedded = false }) => {
           dataVersion: prev.dataVersion + 1
         };
       });
+
+      // Add notification
+      if (notificationRef.current) {
+        notificationRef.current.addNotification('glassUpdated', updatedGlass);
+      }
     };
 
     const handleGlassDeleted = ({ productId }) => {
@@ -153,15 +165,30 @@ const GlassDashboard = ({ isEmbedded = false }) => {
           dataVersion: prev.dataVersion + 1
         };
       });
+
+      // Add notification
+      if (notificationRef.current) {
+        notificationRef.current.addNotification('glassDeleted', { productId });
+      }
     };
 
-    // Glass production updates
+    // Glass production updates with notifications
     const handleGlassProductionUpdated = ({ order_number, item_id, component_id, updatedComponent }) => {
       console.log("📢 Glass production update received:", order_number, item_id, component_id, updatedComponent);
       handleOrderUpdate(order_number, item_id, component_id, updatedComponent, updatedComponent?.status);
+      
+      // Add notification
+      if (notificationRef.current) {
+        notificationRef.current.addNotification('glassProductionUpdated', {
+          order_number,
+          item_id,
+          component_id,
+          updatedComponent
+        });
+      }
     };
 
-    // Glass stock adjustments
+    // Glass stock adjustments with notifications
     const handleGlassStockAdjusted = ({ dataCode, newStock }) => {
       console.log("📢 Glass stock adjustment received:", dataCode, newStock);
 
@@ -172,9 +199,14 @@ const GlassDashboard = ({ isEmbedded = false }) => {
 
       handleStockUpdate(updatedData);
       localStorage.setItem("glassMaster", JSON.stringify(updatedData));
+
+      // Add notification
+      if (notificationRef.current) {
+        notificationRef.current.addNotification('glassStockAdjusted', { dataCode, newStock });
+      }
     };
 
-    // Glass negative adjustments
+    // Glass negative adjustments with notifications
     const handleGlassNegativeAdjustmentUpdated = ({
       order_number,
       item_id,
@@ -199,9 +231,17 @@ const GlassDashboard = ({ isEmbedded = false }) => {
         itemChanges,
         orderChanges
       );
+
+      // Add notification
+      if (notificationRef.current) {
+        notificationRef.current.addNotification('glassNegativeAdjustmentUpdated', {
+          order_number,
+          adjustmentSummary
+        });
+      }
     };
 
-    // Glass dispatch updates - SIMPLIFIED
+    // Glass dispatch updates with notifications
     const handleGlassDispatchUpdated = ({
       order_number,
       item_id,
@@ -225,9 +265,17 @@ const GlassDashboard = ({ isEmbedded = false }) => {
         itemChanges,
         orderChanges
       );
+
+      // Add notification
+      if (notificationRef.current) {
+        notificationRef.current.addNotification('glassDispatchUpdated', {
+          order_number,
+          component_id
+        });
+      }
     };
 
-    // Glass rollback updates
+    // Glass rollback updates with notifications
     const handleGlassRollbackUpdated = ({
       order_number,
       item_id,
@@ -251,12 +299,17 @@ const GlassDashboard = ({ isEmbedded = false }) => {
         itemChanges,
         orderChanges
       );
+
+      // Add notification
+      if (notificationRef.current) {
+        notificationRef.current.addNotification('glassRollbackUpdated', {
+          order_number,
+          component_id
+        });
+      }
     };
 
-    // REMOVED: All vehicle approval logic from glass dashboard
-    // Glass only needs to know about dispatch, not approve vehicles
-
-    // Register event listeners - REMOVED vehicle approval listeners
+    // Register event listeners
     socket.on("glassStockUpdated", handleGlassStockUpdated);
     socket.on("glassAdded", handleGlassAdded);
     socket.on("glassUpdated", handleGlassUpdated);
@@ -268,7 +321,7 @@ const GlassDashboard = ({ isEmbedded = false }) => {
     socket.on("glassRollbackUpdated", handleGlassRollbackUpdated);
 
     return () => {
-      // Clean up event listeners - REMOVED vehicle approval cleanup
+      // Clean up event listeners
       socket.off("joinedProduction");
       socket.off("glassStockUpdated", handleGlassStockUpdated);
       socket.off("glassAdded", handleGlassAdded);
@@ -407,7 +460,6 @@ const GlassDashboard = ({ isEmbedded = false }) => {
       onStockUpdate: handleStockUpdate,
       onOrdersUpdate: handleOrdersUpdate,
       refreshOrders,
-      set
     };
 
     switch (activeMenuItem) {
@@ -451,11 +503,12 @@ const GlassDashboard = ({ isEmbedded = false }) => {
       </div>
     );
   }
+
   const headerConfig = {
     showGradient: !isEmbedded,
     showTime: !isEmbedded,
-    title: isEmbedded ? "Bottle Department" : "Welcome to Bottle Department !",
-    mobileTitle: "Bottle"
+    title: isEmbedded ? "Glass Department" : "Welcome to Glass Department !",
+    mobileTitle: "Glass"
   };
 
   return (
@@ -468,6 +521,7 @@ const GlassDashboard = ({ isEmbedded = false }) => {
         handleLogout={handleLogout}
         formatTime={formatTime}
         formatTimeMobile={formatTimeMobile}
+        additionalHeaderContent={<GlassNotificationPanel ref={notificationRef} teamName="glass" />}
       />
 
       {mobileMenuOpen && (
@@ -519,7 +573,7 @@ const GlassDashboard = ({ isEmbedded = false }) => {
                 <button
                   onClick={() => handleMenuClick(item.id)}
                   className={`flex items-center px-4 py-3 text-sm font-medium whitespace-nowrap transition-all duration-200 border-b-2 z-0 ${activeMenuItem === item.id
-                    ? 'text-orange-600 border-orange-500 bg-orange-50'
+                    ? 'text-orange-600 border-orange-500 bg-blue-50'
                     : 'text-gray-600 border-transparent hover:text-orange-600 hover:bg-orange-50/50'
                     }`}
                 >

@@ -49,7 +49,7 @@ const GlassDashboard = ({ isEmbedded = false }) => {
     try {
       setGlobalState(prev => ({ ...prev, loading: true, error: null }));
 
-      const response = await fetch("https://doms-k1fi.onrender.com/api/masters/glass/all");
+      const response = await fetch("http://13.204.44.250/api/masters/glass/all");
       const result = await response.json();
 
       if (result.success) {
@@ -375,6 +375,32 @@ const GlassDashboard = ({ isEmbedded = false }) => {
       }, 100);
     };
 
+     const handleVehicleUpdated = ({
+      order_number,
+      item_id,
+      component_id,
+      updatedComponent,
+      itemChanges,
+      orderChanges
+    }) => {
+      console.log("🔄 Glass rollback update received:", {
+        order_number,
+        component_id,
+        status: updatedComponent?.status
+      });
+
+      handleOrderUpdate(
+        order_number,
+        item_id,
+        component_id,
+        updatedComponent,
+        updatedComponent?.status,
+        itemChanges,
+        orderChanges
+      );
+
+    };
+
     // Glass rollback updates with notifications
     const handleGlassRollbackUpdated = ({
       order_number,
@@ -420,7 +446,7 @@ const GlassDashboard = ({ isEmbedded = false }) => {
     socket.on("glassNegativeAdjustmentUpdated", handleGlassNegativeAdjustmentUpdated);
     socket.on("glassDispatchUpdated", handleGlassDispatchUpdated);
     socket.on("glassRollbackUpdated", handleGlassRollbackUpdated);
-
+    socket.on("glassVehicleUpdated",handleVehicleUpdated);
     return () => {
       console.log('🔌 Cleaning up socket event listeners...');
       // Clean up event listeners
@@ -434,6 +460,8 @@ const GlassDashboard = ({ isEmbedded = false }) => {
       socket.off("glassNegativeAdjustmentUpdated", handleGlassNegativeAdjustmentUpdated);
       socket.off("glassDispatchUpdated", handleGlassDispatchUpdated);
       socket.off("glassRollbackUpdated", handleGlassRollbackUpdated);
+    socket.off("glassVehicleUpdated",handleVehicleUpdated);
+
     };
   }, [socket, handleOrderUpdate, handleStockUpdate, triggerNotification]); // Added dependencies
 

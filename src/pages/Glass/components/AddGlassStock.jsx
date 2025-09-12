@@ -127,7 +127,7 @@ const AddGlassStock = ({ isOpen, onClose, initialSearchTerm = "", glassDetails, 
   //   setUpdateLoading(prev => ({ ...prev, [glass.data_code]: true }));
 
   //   try {
-  //     const response = await fetch(`https://doms-k1fi.onrender.com/api/masters/glass/stock/adjust/${glass.data_code}`, {
+  //     const response = await fetch(`http://13.204.44.250/api/masters/glass/stock/adjust/${glass.data_code}`, {
   //       method: 'PATCH',
   //       headers: {
   //         'Content-Type': 'application/json',

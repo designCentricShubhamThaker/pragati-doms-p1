@@ -74,6 +74,11 @@ const DecoAdminDashboard = () => {
     socket.on("joinedProduction", ({ message }) => {
       console.log(`✅ [DecoAdmin] Production room joined:`, message);
     });
+    socket.emit("joinDecoAdmin")
+
+     socket.on("joinDecoAdmin", ({ message }) => {
+      console.log(`✅ [DecoAdmin] Production room joined:`, message);
+    });
 
     // Listen to the same events as individual decoration teams
     const handleDecorationProductionUpdated = ({ team, order_number, item_id, component_id, updatedComponent }) => {

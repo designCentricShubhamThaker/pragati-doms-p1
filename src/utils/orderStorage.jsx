@@ -216,7 +216,7 @@ export const initializeLocalStorage = async (team, filterOrderFn, forPrinting = 
   const storageKey = getStorageKey(team);
   
   try {
-    const response = await fetch('https://doms-k1fi.onrender.com/api/orders/');
+    const response = await fetch('http://13.204.44.250/api/orders/');
     if (!response.ok) throw new Error('Failed to fetch orders');
     const allOrders = await response.json() || [];
     

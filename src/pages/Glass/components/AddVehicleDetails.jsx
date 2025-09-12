@@ -3,7 +3,7 @@ import { X, Save, Plus, Minus, Truck } from 'lucide-react';
 import { getSocket } from '../../../context/SocketContext';
 
 const AddVehicleDetails = ({ isOpen, onClose, orderData, itemData, onUpdate , selectedComponent}) => {
-  console.log(selectedComponent)
+  
   const [vehicleDetails, setVehicleDetails] = useState([]);
   const [errors, setErrors] = useState({});
   const [numberOfVehicles, setNumberOfVehicles] = useState(1);
